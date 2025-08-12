@@ -1,721 +1,797 @@
-const { v4: uuidv4 } = require('uuid');
-const cosmosClient = require('../config/cosmosdb');
-const geminiAI = require('./geminiAI');
-const chatCaptureService = require('./chatCaptureService');
-const logger = require('../utils/logger');
+const express = require("express");
+const { v4: uuidv4 } = require("uuid");
+const moment = require("moment");
+const teamsService = require("../services/teamsService");
+const geminiAI = require("../services/geminiAI");
+const chatCaptureService = require("../services/chatCaptureService");
+const meetingAttendanceService = require("../services/meetingAttendanceService");
+const meetingSummaryService = require("../services/meetingSummaryService");
+const cosmosClient = require("../config/cosmosdb");
+const logger = require("../utils/logger");
 
-class MeetingSummaryService {
-  constructor() {
-    this.autoSummaryEnabled = true;
-    this.summaryQueue = new Map(); // Queue for processing summaries
+const router = express.Router();
+
+// Simulate authentication (replace with real auth later)
+const simulateAuth = (req, res, next) => {
+  req.user = {
+    userId: "demo-user-123",
+    email: "demo@company.com",
+    name: "Demo User",
+  };
+  next();
+};
+
+router.use(simulateAuth);
+
+// Middleware to ensure Teams integration is available
+const requireRealTeams = (req, res, next) => {
+  if (!teamsService.isAvailable()) {
+    return res.status(503).json({
+      error: "Real Teams integration is required but not configured",
+      message: "Please configure Azure AD credentials to use this feature",
+      requiredConfig: {
+        azureClientId: "AZURE_CLIENT_ID",
+        azureClientSecret: "AZURE_CLIENT_SECRET", 
+        azureTenantId: "AZURE_TENANT_ID"
+      }
+    });
   }
+  next();
+};
 
-  // Generate comprehensive meeting summary
-  async generateMeetingSummary(meetingId, options = {}) {
-    try {
-      logger.info('📋 Generating comprehensive meeting summary', { meetingId });
+// ============================================================================
+// POC FEATURE 1.1: REAL TEAMS MEETING SCHEDULING
+// ============================================================================
 
-      const {
-        includeTranscript = true,
-        includeChat = true,
-        includeParticipantAnalysis = true,
-        summaryType = 'comprehensive',
-        autoActionItems = true,
-        autoFollowUp = true
-      } = options;
+// POST /api/meetings/create - Create REAL Teams meeting only
+router.post("/create", requireRealTeams, async (req, res) => {
+  try {
+    const {
+      subject,
+      description,
+      startTime,
+      endTime,
+      attendees = [],
+      recurrence = null,
+      autoJoinAgent = true,
+      enableChatCapture = true,
+    } = req.body;
 
-      // FIXED: Get meeting details using correct query
-      const meetings = await cosmosClient.queryItems('meetings',
-        'SELECT * FROM c WHERE c.meetingId = @meetingId',
-        [{ name: '@meetingId', value: meetingId }]
-      );
+    logger.info("🤖 Creating REAL Teams meeting", {
+      subject,
+      attendeesCount: attendees.length,
+      hasRecurrence: !!recurrence,
+      autoJoinAgent,
+    });
 
-      if (!meetings || meetings.length === 0) {
-        // Try alternative query with id field
-        const meetingsById = await cosmosClient.queryItems('meetings',
-          'SELECT * FROM c WHERE c.id = @meetingId',
-          [{ name: '@meetingId', value: meetingId }]
-        );
-        
-        if (!meetingsById || meetingsById.length === 0) {
-          logger.error('❌ Meeting not found in database', { meetingId });
-          throw new Error('Meeting not found');
-        }
-        
-        // Use the meeting found by id
-        var meeting = meetingsById[0];
-      } else {
-        var meeting = meetings[0];
-      }
-
-      logger.info('✅ Meeting found for summary', { 
-        meetingId, 
-        dbId: meeting.id, 
-        subject: meeting.subject 
+    // Validate required fields
+    if (!subject || !startTime || !endTime) {
+      return res.status(400).json({
+        error: "Subject, start time, and end time are required",
       });
-
-      // Gather all meeting data
-      const meetingData = await this.gatherMeetingData(meetingId, {
-        includeChat,
-        includeTranscript,
-        includeParticipantAnalysis
-      });
-
-      // Generate AI-powered summary
-      const aiSummary = await this.generateAISummary(meeting, meetingData, summaryType);
-
-      // Extract action items
-      let actionItems = [];
-      if (autoActionItems) {
-        actionItems = await this.extractActionItems(meetingData);
-      }
-
-      // Generate participant insights
-      let participantInsights = {};
-      if (includeParticipantAnalysis) {
-        participantInsights = await this.analyzeParticipantEngagement(meetingData);
-      }
-
-      // Create comprehensive summary
-      const comprehensiveSummary = {
-        id: uuidv4(),
-        meetingId: meetingId,
-        type: 'comprehensive_summary',
-        summaryType: summaryType,
-        generatedAt: new Date().toISOString(),
-        
-        // Meeting metadata
-        meeting: {
-          subject: meeting.subject,
-          startTime: meeting.startTime,
-          endTime: meeting.endTime,
-          duration: this.calculateDuration(meeting.startTime, meeting.endTime),
-          attendees: meeting.attendees || [],
-          agentAttended: meeting.agentAttended
-        },
-
-        // AI-generated content
-        executiveSummary: aiSummary.executiveSummary,
-        keyDiscussionPoints: aiSummary.keyDiscussionPoints,
-        decisionsAndOutcomes: aiSummary.decisionsAndOutcomes,
-        nextSteps: aiSummary.nextSteps,
-        
-        // Structured data
-        actionItems: actionItems,
-        participantInsights: participantInsights,
-        
-        // Meeting metrics
-        metrics: {
-          totalMessages: meetingData.chatAnalysis?.totalMessages || 0,
-          questionsAsked: meetingData.chatAnalysis?.categorizedCounts?.questions || 0,
-          decisionsTracked: meetingData.chatAnalysis?.categorizedCounts?.decisions || 0,
-          actionItemsIdentified: actionItems.length,
-          participantCount: Object.keys(participantInsights).length,
-          engagementLevel: this.calculateEngagementLevel(meetingData)
-        },
-
-        // Quality scores
-        qualityScores: await this.calculateQualityScores(meeting, meetingData, aiSummary),
-
-        // Follow-up recommendations
-        followUpRecommendations: autoFollowUp ? await this.generateFollowUpRecommendations(meetingData, actionItems) : [],
-
-        // Metadata
-        metadata: {
-          aiModel: geminiAI.isAvailable() ? 'Gemini AI' : 'Basic Analysis',
-          dataIncluded: {
-            chat: includeChat,
-            transcript: includeTranscript,
-            participantAnalysis: includeParticipantAnalysis
-          },
-          processingTime: new Date().toISOString()
-        }
-      };
-
-      // Save summary to database
-      await cosmosClient.createItem('summaries', comprehensiveSummary);
-
-      // Update meeting record
-      await cosmosClient.updateItem('meetings', meeting.id, meeting.userId, {
-        hasSummary: true,
-        lastSummaryGenerated: new Date().toISOString(),
-        summaryId: comprehensiveSummary.id
-      });
-
-      // Generate and send follow-up actions if enabled
-      if (autoFollowUp && actionItems.length > 0) {
-        await this.scheduleFollowUpActions(meetingId, actionItems);
-      }
-
-      logger.info('✅ Comprehensive meeting summary generated', {
-        meetingId,
-        actionItemsFound: actionItems.length,
-        participantsAnalyzed: Object.keys(participantInsights).length,
-        qualityScore: comprehensiveSummary.qualityScores.overall
-      });
-
-      return comprehensiveSummary;
-
-    } catch (error) {
-      logger.error('❌ Failed to generate meeting summary:', error);
-      throw error;
     }
-  }
 
-  // Gather all available meeting data
-  async gatherMeetingData(meetingId, options) {
-    try {
-      const data = {
-        meetingId: meetingId
-      };
+    // Create REAL Teams meeting via Graph API
+    const teamsMeetingResult = await teamsService.createTeamsMeeting({
+      subject: subject,
+      description: description,
+      startTime: startTime,
+      endTime: endTime,
+      attendees: attendees,
+      recurrence: recurrence
+    });
 
-      // Get chat analysis if available
-      if (options.includeChat) {
+    // Create meeting record in database
+    const meetingData = {
+      id: uuidv4(),
+      meetingId: teamsMeetingResult.meetingId,
+      userId: req.user.userId,
+      subject: subject,
+      description: description,
+      startTime: startTime,
+      endTime: endTime,
+      attendees: attendees,
+      status: "scheduled",
+      joinUrl: teamsMeetingResult.joinUrl,
+      webUrl: teamsMeetingResult.webUrl,
+      graphEventId: teamsMeetingResult.graphEventId,
+      isRealTeamsMeeting: true,
+      isRecurring: teamsMeetingResult.isRecurring || false,
+      agentAttended: false,
+      agentConfig: {
+        autoJoin: autoJoinAgent,
+        enableChatCapture: enableChatCapture,
+        generateSummary: true,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const savedMeeting = await cosmosClient.createMeeting(meetingData);
+
+    // Auto-join AI agent logic for meetings starting soon
+    if (autoJoinAgent) {
+      const now = moment();
+      const meetingStart = moment(startTime);
+      const minutesUntilStart = meetingStart.diff(now, 'minutes');
+
+      if (minutesUntilStart <= 15 && minutesUntilStart >= -5) {
+        logger.info("🤖 Meeting starting soon, joining AI agent to REAL Teams meeting");
+        
         try {
-          data.chatAnalysis = await chatCaptureService.getChatAnalysis(meetingId);
-          
-          // Get raw messages for AI processing
-          data.chatMessages = await cosmosClient.queryItems('chats',
-            'SELECT * FROM c WHERE c.meetingId = @meetingId ORDER BY c.timestamp ASC',
-            [{ name: '@meetingId', value: meetingId }]
+          await meetingAttendanceService.joinMeeting(
+            savedMeeting.meetingId,
+            req.user.userId
           );
-        } catch (chatError) {
-          logger.warn('Could not get chat data:', chatError);
-          data.chatAnalysis = null;
-          data.chatMessages = [];
-        }
-      }
 
-      // Get transcript data if available (future enhancement)
-      if (options.includeTranscript) {
-        data.transcript = await this.getTranscriptData(meetingId);
-      }
-
-      return data;
-
-    } catch (error) {
-      logger.error('❌ Failed to gather meeting data:', error);
-      throw error;
-    }
-  }
-
-  // Generate AI-powered summary using Gemini
-  async generateAISummary(meeting, meetingData, summaryType) {
-    try {
-      if (!geminiAI.isAvailable()) {
-        return this.generateBasicSummary(meeting, meetingData);
-      }
-
-      // Prepare comprehensive prompt for Gemini AI
-      const chatContent = meetingData.chatMessages?.map(msg => 
-        `${msg.senderName || msg.sender}: ${msg.content}`
-      ).join('\n') || 'No chat messages available.';
-
-      const prompt = `
-        Generate a comprehensive meeting summary based on the following information:
-
-        Meeting Details:
-        - Subject: ${meeting.subject}
-        - Duration: ${this.calculateDuration(meeting.startTime, meeting.endTime).formatted}
-        - Attendees: ${(meeting.attendees || []).join(', ')}
-
-        Chat Messages:
-        ${chatContent}
-
-        Meeting Analytics:
-        - Total Messages: ${meetingData.chatAnalysis?.totalMessages || 0}
-        - Questions Asked: ${meetingData.chatAnalysis?.categorizedCounts?.questions || 0}
-        - Decisions Made: ${meetingData.chatAnalysis?.categorizedCounts?.decisions || 0}
-        - Action Items Mentioned: ${meetingData.chatAnalysis?.categorizedCounts?.actionItems || 0}
-
-        Please provide a ${summaryType} summary in the following JSON format:
-        {
-          "executiveSummary": "A concise 2-3 sentence overview of the meeting's purpose and key outcomes",
-          "keyDiscussionPoints": [
-            "Main topic 1 discussed in detail",
-            "Main topic 2 with key insights",
-            "Main topic 3 and conclusions"
-          ],
-          "decisionsAndOutcomes": [
-            {
-              "decision": "Clear decision made",
-              "rationale": "Why this decision was made",
-              "impact": "Expected impact or next steps"
-            }
-          ],
-          "nextSteps": [
-            "Immediate next step 1",
-            "Immediate next step 2",
-            "Longer-term action 3"
-          ],
-          "keyInsights": [
-            "Important insight 1",
-            "Strategic observation 2",
-            "Process improvement 3"
-          ],
-          "meetingEffectiveness": {
-            "score": 1-10,
-            "strengths": ["What went well"],
-            "improvements": ["What could be better"]
+          if (enableChatCapture) {
+            await chatCaptureService.initiateRealChatCapture(savedMeeting);
           }
+
+          await cosmosClient.updateItem(
+            "meetings",
+            savedMeeting.id,
+            req.user.userId,
+            {
+              status: "in_progress",
+              agentJoinedAt: new Date().toISOString(),
+              agentAttended: true,
+            }
+          );
+
+          savedMeeting.agentJoinedImmediately = true;
+          savedMeeting.agentAttended = true;
+          savedMeeting.status = "in_progress";
+
+        } catch (immediateJoinError) {
+          logger.error("❌ Immediate AI agent join failed:", immediateJoinError);
+          savedMeeting.agentJoinError = immediateJoinError.message;
         }
-      `;
-
-      const result = await geminiAI.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-
-      try {
-        const aiSummary = JSON.parse(text.replace(/```json|```/g, '').trim());
-        logger.info('✅ AI summary generated successfully');
-        return aiSummary;
-      } catch (parseError) {
-        logger.warn('Failed to parse AI summary, using basic summary');
-        return this.generateBasicSummary(meeting, meetingData);
       }
-
-    } catch (error) {
-      logger.warn('AI summary generation failed, using basic summary:', error);
-      return this.generateBasicSummary(meeting, meetingData);
     }
+
+    res.status(201).json({
+      success: true,
+      meeting: savedMeeting,
+      message: "🟢 REAL Teams meeting created successfully with AI agent capabilities!",
+      realTeamsMeeting: true,
+      teamsIntegrationStatus: teamsService.getStatus(),
+      agentStatus: {
+        autoJoinEnabled: autoJoinAgent,
+        chatCaptureEnabled: enableChatCapture,
+        joinedImmediately: savedMeeting.agentJoinedImmediately || false,
+        error: savedMeeting.agentJoinError || null,
+        willBeVisibleToParticipants: true
+      },
+      meetingDetails: {
+        graphEventId: teamsMeetingResult.graphEventId,
+        joinUrl: teamsMeetingResult.joinUrl,
+        webUrl: teamsMeetingResult.webUrl
+      }
+    });
+  } catch (error) {
+    logger.error("❌ Create REAL Teams meeting error:", error);
+    res.status(500).json({
+      error: "Failed to create real Teams meeting",
+      details: error.message,
+    });
   }
+});
 
-  // Generate basic summary (fallback)
-  generateBasicSummary(meeting, meetingData) {
-    const chatAnalysis = meetingData.chatAnalysis;
-    
-    return {
-      executiveSummary: `Meeting "${meeting.subject}" was held with ${(meeting.attendees || []).length} attendees. ${chatAnalysis?.totalMessages || 0} messages were exchanged during the discussion.`,
-      keyDiscussionPoints: [
-        `Primary focus: ${meeting.subject}`,
-        `Duration: ${this.calculateDuration(meeting.startTime, meeting.endTime).formatted}`,
-        `Participants: ${(meeting.attendees || []).length} attendees`
-      ],
-      decisionsAndOutcomes: [
-        {
-          decision: "Meeting concluded successfully",
-          rationale: "All planned topics were discussed",
-          impact: "Follow-up actions to be determined"
-        }
-      ],
-      nextSteps: [
-        "Review meeting outcomes",
-        "Follow up on action items",
-        "Schedule next meeting if needed"
-      ],
-      keyInsights: [
-        `${chatAnalysis?.categorizedCounts?.questions || 0} questions were raised`,
-        `${chatAnalysis?.categorizedCounts?.decisions || 0} decisions were tracked`,
-        `${chatAnalysis?.categorizedCounts?.actionItems || 0} action items were identified`
-      ],
-      meetingEffectiveness: {
-        score: 7,
-        strengths: ["Meeting was completed as scheduled"],
-        improvements: ["Consider more structured agenda"]
-      }
-    };
-  }
+// POST /api/meetings/create-with-names - Create meeting by resolving REAL user names
+router.post("/create-with-names", requireRealTeams, async (req, res) => {
+  try {
+    const {
+      subject,
+      description,
+      startTime,
+      endTime,
+      attendeeNames = [], // ["John Smith", "Sarah Johnson"]
+      attendeeEmails = [], // Additional emails
+      autoJoinAgent = true,
+      enableChatCapture = true,
+    } = req.body;
 
-  // Extract action items with AI analysis
-  async extractActionItems(meetingData) {
-    try {
-      const actionItems = [];
-
-      // Get messages that were identified as action items
-      const actionMessages = meetingData.chatMessages?.filter(msg => 
-        msg.isActionItem || msg.category === 'action_item'
-      ) || [];
-
-      if (actionMessages.length === 0) {
-        return actionItems;
-      }
-
-      // Process each action item message
-      for (const message of actionMessages) {
-        let actionItem;
-
-        if (geminiAI.isAvailable()) {
-          actionItem = await this.analyzeActionItemWithAI(message);
-        } else {
-          actionItem = this.extractBasicActionItem(message);
-        }
-
-        if (actionItem) {
-          actionItems.push({
-            id: uuidv4(),
-            ...actionItem,
-            sourceMessageId: message.id,
-            extractedAt: new Date().toISOString(),
-            status: 'pending'
-          });
-        }
-      }
-
-      logger.info(`✅ Extracted ${actionItems.length} action items`);
-      return actionItems;
-
-    } catch (error) {
-      logger.error('❌ Failed to extract action items:', error);
-      return [];
+    if (!subject || !startTime || !endTime) {
+      return res.status(400).json({
+        error: "Subject, start time, and end time are required"
+      });
     }
-  }
 
-  // Helper methods (keeping the same implementation)
-  calculateDuration(startTime, endTime) {
-    const start = new Date(startTime);
-    const end = new Date(endTime);
-    const durationMs = end - start;
-    const durationMinutes = Math.round(durationMs / (1000 * 60));
+    logger.info("🚀 Creating REAL Teams meeting with name resolution", {
+      subject,
+      attendeeNames,
+      attendeeEmails,
+    });
+
+    let resolvedAttendees = [...attendeeEmails];
     
-    return {
-      minutes: durationMinutes,
-      formatted: `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m`
-    };
-  }
-
-  calculateEngagementLevel(meetingData) {
-    const totalMessages = meetingData.chatAnalysis?.totalMessages || 0;
-    const participantCount = Object.keys(meetingData.chatAnalysis?.participantAnalysis || {}).length || 1;
-    const messagesPerParticipant = totalMessages / participantCount;
-    
-    if (messagesPerParticipant > 10) return 'high';
-    if (messagesPerParticipant > 5) return 'medium';
-    return 'low';
-  }
-
-  // Analyze action item with AI
-  async analyzeActionItemWithAI(message) {
-    try {
-      const prompt = `
-        Extract action item details from this message:
-        
-        Message: "${message.content}"
-        Sender: ${message.senderName || message.sender}
-        
-        Respond in JSON format:
-        {
-          "task": "Clear description of what needs to be done",
-          "assignee": "Person responsible (extract from message or use sender if not specified)",
-          "deadline": "When it needs to be done (extract date/time or estimate)",
-          "priority": "low|medium|high",
-          "category": "meeting_follow_up|project_task|research|communication|other",
-          "estimatedEffort": "How much time/effort required",
-          "dependencies": ["What needs to happen first"],
-          "successCriteria": "How to know when it's complete"
-        }
-      `;
-
-      const result = await geminiAI.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-
-      try {
-        return JSON.parse(text.replace(/```json|```/g, '').trim());
-      } catch (parseError) {
-        return this.extractBasicActionItem(message);
-      }
-
-    } catch (error) {
-      return this.extractBasicActionItem(message);
-    }
-  }
-
-  // Extract basic action item (fallback)
-  extractBasicActionItem(message) {
-    return {
-      task: message.content,
-      assignee: message.senderName || message.sender,
-      deadline: this.extractDeadlineFromMessage(message.content),
-      priority: message.urgency || 'medium',
-      category: 'meeting_follow_up',
-      estimatedEffort: 'To be determined',
-      dependencies: [],
-      successCriteria: 'Task completion confirmed'
-    };
-  }
-
-  async analyzeParticipantEngagement(meetingData) {
-    try {
-      const insights = {};
+    // Resolve names to emails using REAL Teams directory
+    if (attendeeNames.length > 0) {
+      const resolvedUsers = await teamsService.findUsersByDisplayName(attendeeNames);
+      resolvedAttendees.push(...resolvedUsers.map(user => user.email));
       
-      if (!meetingData.chatAnalysis?.participantAnalysis) {
-        return insights;
-      }
-
-      const participants = meetingData.chatAnalysis.participantAnalysis;
-
-      for (const [email, stats] of Object.entries(participants)) {
-        insights[email] = {
-          name: this.extractNameFromEmail(email),
-          email: email,
-          engagement: {
-            messageCount: stats.messageCount,
-            questionsAsked: stats.questions,
-            actionsProposed: stats.actionItems,
-            decisionsInfluenced: stats.decisions,
-            engagementLevel: this.calculateParticipantEngagement(stats),
-            sentimentProfile: stats.sentiment
-          },
-          communicationStyle: this.analyzeCommunicationStyle(stats),
-          contributions: await this.analyzeContributions(email, meetingData.chatMessages),
-          recommendations: this.generateParticipantRecommendations(stats)
-        };
-      }
-
-      return insights;
-
-    } catch (error) {
-      logger.error('❌ Failed to analyze participant engagement:', error);
-      return {};
+      logger.info(`✅ Resolved ${resolvedUsers.length}/${attendeeNames.length} users from REAL Teams directory`);
     }
+
+    // Remove duplicates
+    resolvedAttendees = [...new Set(resolvedAttendees)];
+
+    // Create the REAL Teams meeting
+    const teamsMeetingResult = await teamsService.createTeamsMeeting({
+      subject,
+      description,
+      startTime,
+      endTime,
+      attendees: resolvedAttendees
+    });
+
+    // Create meeting record in database
+    const meetingData = {
+      id: uuidv4(),
+      meetingId: teamsMeetingResult.meetingId,
+      userId: req.user.userId,
+      subject: subject,
+      description: description,
+      startTime: startTime,
+      endTime: endTime,
+      attendees: resolvedAttendees,
+      attendeeNames: attendeeNames,
+      status: "scheduled",
+      joinUrl: teamsMeetingResult.joinUrl,
+      webUrl: teamsMeetingResult.webUrl,
+      graphEventId: teamsMeetingResult.graphEventId,
+      isRealTeamsMeeting: true,
+      agentAttended: false,
+      agentConfig: {
+        autoJoin: autoJoinAgent,
+        enableChatCapture: enableChatCapture,
+        generateSummary: true
+      },
+      userResolution: {
+        namesRequested: attendeeNames.length,
+        usersResolved: resolvedAttendees.length - attendeeEmails.length,
+        realTeamsDirectoryUsed: true
+      },
+      createdAt: new Date().toISOString(),
+    };
+
+    const savedMeeting = await cosmosClient.createMeeting(meetingData);
+
+    res.status(201).json({
+      success: true,
+      meeting: savedMeeting,
+      message: "🚀 REAL Teams meeting created with user name resolution from Teams directory!",
+      realTeamsMeeting: true,
+      userResolution: {
+        realTeamsDirectoryUsed: true,
+        namesRequested: attendeeNames.length,
+        usersResolved: resolvedAttendees.length - attendeeEmails.length,
+        finalAttendees: resolvedAttendees
+      },
+      teamsIntegrationStatus: teamsService.getStatus(),
+    });
+
+  } catch (error) {
+    logger.error("❌ Create REAL Teams meeting with names error:", error);
+    res.status(500).json({
+      error: "Failed to create real Teams meeting with name resolution",
+      details: error.message
+    });
   }
+});
 
-  async calculateQualityScores(meeting, meetingData, aiSummary) {
-    try {
-      const scores = {
-        overall: 0,
-        participation: 0,
-        productivity: 0,
-        clarity: 0,
-        actionOriented: 0
-      };
+// GET /api/meetings/suggest-times - Get REAL optimal meeting times from Teams calendars
+router.post("/suggest-times", requireRealTeams, async (req, res) => {
+  try {
+    const {
+      attendees = [],
+      duration = 30,
+    } = req.body;
 
-      const chatAnalysis = meetingData.chatAnalysis;
-      
-      // Participation score (based on message distribution)
-      if (chatAnalysis?.participantAnalysis) {
-        const participantCount = Object.keys(chatAnalysis.participantAnalysis).length;
-        const totalMessages = chatAnalysis.totalMessages || 0;
-        const avgMessagesPerPerson = totalMessages / Math.max(participantCount, 1);
-        scores.participation = Math.min(10, (avgMessagesPerPerson / 5) * 10); // Normalize to 10
-      }
+    logger.info("🤖 Finding optimal meeting times from REAL Teams calendars", {
+      attendeesCount: attendees.length,
+      duration,
+    });
 
-      // Productivity score (questions answered, decisions made)
-      const questions = chatAnalysis?.categorizedCounts?.questions || 0;
-      const decisions = chatAnalysis?.categorizedCounts?.decisions || 0;
-      const actionItems = chatAnalysis?.categorizedCounts?.actionItems || 0;
-      scores.productivity = Math.min(10, ((decisions * 2) + (actionItems * 1.5) + (questions * 0.5)) / 3);
+    if (attendees.length === 0) {
+      return res.status(400).json({
+        error: "At least one attendee email is required to check real calendar availability"
+      });
+    }
 
-      // Clarity score (based on AI effectiveness rating)
-      scores.clarity = aiSummary?.meetingEffectiveness?.score || 7;
+    // Get REAL meeting suggestions from Teams calendars
+    const suggestions = await teamsService.findMeetingTimes(attendees, duration);
 
-      // Action-oriented score
-      const totalMessages = chatAnalysis?.totalMessages || 1;
-      const actionRatio = (decisions + actionItems) / totalMessages;
-      scores.actionOriented = Math.min(10, actionRatio * 20);
+    res.json({
+      success: true,
+      suggestions: suggestions,
+      realTeamsCalendarData: true,
+      message: "🤖 Optimal times found using REAL Teams calendar data!",
+      attendeesChecked: attendees.length,
+      duration: duration
+    });
+  } catch (error) {
+    logger.error("❌ Suggest times from REAL Teams calendars error:", error);
+    res.status(500).json({ 
+      error: "Failed to get real meeting time suggestions",
+      details: error.message 
+    });
+  }
+});
 
-      // Overall score (weighted average)
-      scores.overall = Math.round(
-        (scores.participation * 0.2) +
-        (scores.productivity * 0.3) +
-        (scores.clarity * 0.3) +
-        (scores.actionOriented * 0.2)
+// ============================================================================
+// POC FEATURE 1.4: REAL AI AGENT MEETING ATTENDANCE  
+// ============================================================================
+
+// POST /api/meetings/:id/join-agent - Join AI agent to REAL Teams meeting
+router.post("/:id/join-agent", requireRealTeams, async (req, res) => {
+  try {
+    let meeting = await cosmosClient.getItem(
+      "meetings",
+      req.params.id,
+      req.user.userId
+    );
+
+    if (!meeting) {
+      const meetings = await cosmosClient.queryItems(
+        "meetings",
+        "SELECT * FROM c WHERE c.meetingId = @meetingId",
+        [{ name: "@meetingId", value: req.params.id }]
       );
-
-      return scores;
-
-    } catch (error) {
-      logger.error('❌ Failed to calculate quality scores:', error);
-      return { overall: 7, participation: 7, productivity: 7, clarity: 7, actionOriented: 7 };
+      if (meetings && meetings.length > 0) {
+        meeting = meetings[0];
+      }
     }
+
+    if (!meeting) {
+      return res.status(404).json({ error: "Meeting not found" });
+    }
+
+    if (!meeting.isRealTeamsMeeting) {
+      return res.status(400).json({ 
+        error: "AI agent can only join real Teams meetings",
+        meetingType: "simulated"
+      });
+    }
+
+    logger.info("🤖 AI Agent joining REAL Teams meeting as visible participant", {
+      meetingId: req.params.id,
+      subject: meeting.subject,
+      graphEventId: meeting.graphEventId
+    });
+
+    // Join REAL Teams meeting
+    const joinResult = await meetingAttendanceService.joinMeeting(
+      meeting.meetingId,
+      req.user.userId
+    );
+
+    // Start REAL chat capture
+    if (meeting.agentConfig?.enableChatCapture !== false) {
+      await chatCaptureService.initiateRealChatCapture(meeting);
+    }
+
+    // Update meeting status
+    await cosmosClient.updateItem("meetings", meeting.id, req.user.userId, {
+      agentAttended: true,
+      agentJoinedAt: new Date().toISOString(),
+      status: "in_progress",
+    });
+
+    res.json({
+      success: true,
+      message: "🤖 AI Agent successfully joined REAL Teams meeting and is now visible to all participants",
+      meetingDetails: {
+        id: meeting.id,
+        meetingId: meeting.meetingId,
+        subject: meeting.subject,
+        status: "in_progress",
+        graphEventId: meeting.graphEventId,
+        joinUrl: meeting.joinUrl
+      },
+      joinResult: joinResult,
+      capabilities: {
+        realChatMonitoring: true,
+        realAiInteraction: true,
+        realTranscriptCapture: true,
+        realSummaryGeneration: true,
+        visibleToParticipants: true
+      }
+    });
+  } catch (error) {
+    logger.error("❌ AI Agent join REAL Teams meeting failed:", error);
+    res.status(500).json({
+      error: "Failed to join AI agent to real Teams meeting",
+      details: error.message,
+    });
   }
+});
 
-  async generateFollowUpRecommendations(meetingData, actionItems) {
-    try {
-      const recommendations = [];
+// POST /api/meetings/:id/leave-agent - Remove AI agent from REAL Teams meeting
+router.post("/:id/leave-agent", requireRealTeams, async (req, res) => {
+  try {
+    let meeting = await cosmosClient.getItem(
+      "meetings",
+      req.params.id,
+      req.user.userId
+    );
 
-      // Action item follow-up
-      if (actionItems.length > 0) {
-        recommendations.push({
-          type: 'action_items',
-          priority: 'high',
-          recommendation: `Follow up on ${actionItems.length} action items`,
-          details: `Send reminders to assignees and track progress`,
-          suggestedTimeline: '2-3 days'
+    if (!meeting) {
+      const meetings = await cosmosClient.queryItems(
+        "meetings",
+        "SELECT * FROM c WHERE c.meetingId = @meetingId",
+        [{ name: "@meetingId", value: req.params.id }]
+      );
+      if (meetings && meetings.length > 0) {
+        meeting = meetings[0];
+      }
+    }
+
+    logger.info("🤖 AI Agent leaving REAL Teams meeting", { meetingId: req.params.id });
+
+    // Leave REAL Teams meeting
+    const leaveResult = await meetingAttendanceService.leaveMeeting(
+      meeting?.meetingId || req.params.id,
+      req.user.userId
+    );
+
+    // Stop REAL chat capture
+    await chatCaptureService.stopRealChatCapture(
+      meeting?.meetingId || req.params.id
+    );
+
+    // Update meeting status
+    if (meeting) {
+      await cosmosClient.updateItem("meetings", meeting.id, req.user.userId, {
+        agentLeftAt: new Date().toISOString(),
+        status: "completed",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "🤖 AI Agent successfully left REAL Teams meeting and sent final summary to participants",
+      leaveResult: leaveResult,
+    });
+  } catch (error) {
+    logger.error("❌ AI Agent leave REAL Teams meeting failed:", error);
+    res.status(500).json({
+      error: "Failed to remove AI agent from real Teams meeting",
+      details: error.message,
+    });
+  }
+});
+
+// GET /api/meetings/:id/summary - Get AI-generated summary from REAL Teams data
+router.get("/:id/summary", async (req, res) => {
+  try {
+    const { regenerate = false } = req.query;
+
+    logger.info("📋 Getting AI summary from REAL Teams meeting data", {
+      meetingId: req.params.id,
+      regenerate,
+    });
+
+    let meetingId = req.params.id;
+
+    // Check if this is a database ID or meetingId
+    const meeting = await cosmosClient.getItem(
+      "meetings",
+      req.params.id,
+      req.user.userId
+    );
+    if (meeting) {
+      meetingId = meeting.meetingId;
+      
+      if (!meeting.isRealTeamsMeeting) {
+        return res.status(400).json({
+          error: "Summary can only be generated for real Teams meetings",
+          meetingType: "simulated"
         });
       }
-
-      return recommendations;
-
-    } catch (error) {
-      logger.error('❌ Failed to generate follow-up recommendations:', error);
-      return [];
     }
-  }
 
-  async scheduleFollowUpActions(meetingId, actionItems) {
-    try {
-      logger.info('📅 Scheduling follow-up actions', { meetingId, actionItemCount: actionItems.length });
+    let summary = null;
 
-      for (const actionItem of actionItems) {
-        // Create follow-up reminder
-        const reminder = {
-          id: uuidv4(),
-          meetingId: meetingId,
-          actionItemId: actionItem.id,
-          type: 'action_item_reminder',
-          assignee: actionItem.assignee,
-          task: actionItem.task,
-          deadline: actionItem.deadline,
-          reminderDate: this.calculateReminderDate(actionItem.deadline),
-          status: 'scheduled',
-          createdAt: new Date().toISOString()
-        };
-
-        // Store reminder
-        await cosmosClient.createItem('reminders', reminder);
+    // Check for existing summary
+    if (!regenerate) {
+      try {
+        const existingSummaries = await meetingSummaryService.getMeetingSummaries(meetingId);
+        if (existingSummaries.length > 0) {
+          summary = existingSummaries[0];
+        }
+      } catch (error) {
+        logger.warn("Could not get existing summaries:", error);
       }
-
-      logger.info('✅ Follow-up actions scheduled successfully');
-
-    } catch (error) {
-      logger.error('❌ Failed to schedule follow-up actions:', error);
     }
-  }
 
-  // Helper methods
-  calculateParticipantEngagement(stats) {
-    const score = (stats.messageCount * 1) + (stats.questions * 2) + (stats.actionItems * 3) + (stats.decisions * 2);
-    if (score > 15) return 'high';
-    if (score > 8) return 'medium';
-    return 'low';
-  }
-
-  analyzeCommunicationStyle(stats) {
-    const total = stats.messageCount;
-    if (stats.questions / total > 0.3) return 'inquisitive';
-    if (stats.actionItems / total > 0.2) return 'action-oriented';
-    if (stats.decisions / total > 0.2) return 'decisive';
-    return 'collaborative';
-  }
-
-  async analyzeContributions(email, messages) {
-    const userMessages = messages?.filter(msg => msg.sender === email) || [];
-    return {
-      keyContributions: userMessages.slice(0, 3).map(msg => msg.content),
-      mostFrequentTopics: this.extractTopics(userMessages),
-      influenceScore: this.calculateInfluenceScore(userMessages)
-    };
-  }
-
-  generateParticipantRecommendations(stats) {
-    const recommendations = [];
-    
-    if (stats.messageCount < 3) {
-      recommendations.push('Consider encouraging more participation in future meetings');
+    // Generate new summary from REAL Teams data if needed
+    if (!summary || regenerate) {
+      summary = await meetingSummaryService.generateMeetingSummary(meetingId, {
+        includeChat: true,
+        includeParticipantAnalysis: true,
+        autoActionItems: true
+      });
     }
-    if (stats.questions > stats.messageCount * 0.5) {
-      recommendations.push('Great at asking clarifying questions - valuable for team understanding');
-    }
-    if (stats.actionItems > 0) {
-      recommendations.push('Excellent at identifying actionable next steps');
-    }
-    
-    return recommendations;
-  }
 
-  extractNameFromEmail(email) {
-    const namePart = email.split('@')[0];
-    return namePart.split('.').map(part => 
-      part.charAt(0).toUpperCase() + part.slice(1)
-    ).join(' ');
+    res.json({
+      success: true,
+      summary: summary,
+      generated: !summary || regenerate,
+      dataSource: "real_teams_integration",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error("❌ Summary generation from REAL Teams data failed:", error);
+    res.status(500).json({
+      error: "Failed to get summary from real Teams meeting data",
+      details: error.message,
+    });
   }
+});
 
-  extractDeadlineFromMessage(content) {
-    const deadlinePatterns = [
-      /by (\w+day)/i,
-      /by next (\w+)/i,
-      /by (\w+ \d{1,2})/i,
-      /deadline (\w+)/i
-    ];
-    
-    for (const pattern of deadlinePatterns) {
-      const match = content.match(pattern);
-      if (match) return match[1];
-    }
-    
-    return 'Not specified';
+// GET /api/meetings/:id/chat-analysis - Get REAL Teams chat analysis
+router.get("/:id/chat-analysis", async (req, res) => {
+  try {
+    logger.info("💬 Getting REAL Teams chat analysis", { meetingId: req.params.id });
+
+    const chatAnalysis = await chatCaptureService.getRealChatAnalysis(req.params.id);
+
+    res.json({
+      success: true,
+      analysis: chatAnalysis,
+      dataSource: "real_teams_chat",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error("❌ REAL Teams chat analysis failed:", error);
+    res.status(500).json({
+      error: "Failed to get real Teams chat analysis",
+      details: error.message,
+    });
   }
+});
 
-  calculateReminderDate(deadline) {
-    // Simple logic to set reminder 1 day before deadline
-    const now = new Date();
-    const oneDay = 24 * 60 * 60 * 1000;
-    return new Date(now.getTime() + oneDay).toISOString();
-  }
-
-  extractTopics(messages) {
-    // Simple topic extraction
-    const allText = messages.map(msg => msg.content).join(' ').toLowerCase();
-    const words = allText.split(/\s+/);
-    const importantWords = words.filter(word => 
-      word.length > 4 && 
-      !['that', 'this', 'with', 'from', 'they', 'have', 'will', 'were', 'been'].includes(word)
+// GET /api/meetings/:id/status - Get REAL meeting and agent status
+router.get("/:id/status", async (req, res) => {
+  try {
+    let meeting = await cosmosClient.getItem(
+      "meetings",
+      req.params.id,
+      req.user.userId
     );
-    
-    // Count frequency and return top 3
-    const wordCount = {};
-    importantWords.forEach(word => {
-      wordCount[word] = (wordCount[word] || 0) + 1;
-    });
-    
-    return Object.entries(wordCount)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 3)
-      .map(([word]) => word);
-  }
 
-  calculateInfluenceScore(messages) {
-    // Simple influence calculation based on message types
-    let score = 0;
-    messages.forEach(msg => {
-      if (msg.isDecision) score += 3;
-      if (msg.isActionItem) score += 2;
-      if (msg.isQuestion) score += 1;
-      score += msg.messageCount || 1;
-    });
-    
-    return Math.min(10, score / 2);
-  }
-
-  async getTranscriptData(meetingId) {
-    // Placeholder for future transcript integration
-    return {
-      available: false,
-      reason: 'Transcript capture not yet implemented'
-    };
-  }
-
-  // Get summary by ID
-  async getSummary(summaryId) {
-    try {
-      const summaries = await cosmosClient.queryItems('summaries',
-        'SELECT * FROM c WHERE c.id = @summaryId',
-        [{ name: '@summaryId', value: summaryId }]
+    if (!meeting) {
+      const meetings = await cosmosClient.queryItems(
+        "meetings",
+        "SELECT * FROM c WHERE c.meetingId = @meetingId",
+        [{ name: "@meetingId", value: req.params.id }]
       );
-
-      return summaries[0] || null;
-    } catch (error) {
-      logger.error('❌ Failed to get summary:', error);
-      throw error;
+      if (meetings && meetings.length > 0) {
+        meeting = meetings[0];
+      }
     }
-  }
 
-  // Get all summaries for a meeting
-  async getMeetingSummaries(meetingId) {
+    if (!meeting) {
+      return res.status(404).json({ error: "Meeting not found" });
+    }
+
+    // Get REAL agent attendance status
+    let attendanceStatus = null;
     try {
-      return await cosmosClient.queryItems('summaries',
-        'SELECT * FROM c WHERE c.meetingId = @meetingId ORDER BY c.generatedAt DESC',
-        [{ name: '@meetingId', value: meetingId }]
-      );
+      attendanceStatus = await meetingAttendanceService.getAttendanceSummary(meeting.meetingId);
     } catch (error) {
-      logger.error('❌ Failed to get meeting summaries:', error);
-      throw error;
+      logger.warn("Could not get REAL attendance status:", error.message);
     }
+
+    const now = moment();
+    const meetingStart = moment(meeting.startTime);
+    const meetingEnd = moment(meeting.endTime);
+
+    res.json({
+      success: true,
+      meeting: {
+        id: meeting.id,
+        meetingId: meeting.meetingId,
+        subject: meeting.subject,
+        startTime: meeting.startTime,
+        endTime: meeting.endTime,
+        status: meeting.status,
+        agentAttended: meeting.agentAttended,
+        agentJoinedAt: meeting.agentJoinedAt,
+        isRealTeamsMeeting: meeting.isRealTeamsMeeting,
+        graphEventId: meeting.graphEventId,
+        joinUrl: meeting.joinUrl
+      },
+      timing: {
+        minutesUntilStart: meetingStart.diff(now, 'minutes'),
+        minutesSinceStart: now.diff(meetingStart, 'minutes'),
+        meetingDuration: meetingEnd.diff(meetingStart, 'minutes'),
+        hasStarted: now.isAfter(meetingStart),
+        hasEnded: now.isAfter(meetingEnd)
+      },
+      agentStatus: {
+        isAttending: attendanceStatus?.isActive || false,
+        attendanceDetails: attendanceStatus,
+        realTeamsIntegration: true,
+        capabilities: {
+          realChatMonitoring: true,
+          realAiInteraction: true,
+          realTranscriptCapture: true,
+          realSummaryGeneration: true,
+          visibleToParticipants: true
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error("❌ Get REAL meeting status error:", error);
+    res.status(500).json({
+      error: "Failed to get real meeting status",
+      details: error.message,
+    });
   }
-}
+});
 
-// Create singleton instance
-const meetingSummaryService = new MeetingSummaryService();
+// ============================================================================
+// BASIC MEETING MANAGEMENT (REAL TEAMS ONLY)
+// ============================================================================
 
-module.exports = meetingSummaryService;
+// GET /api/meetings - Get user's REAL Teams meetings
+router.get("/", async (req, res) => {
+  try {
+    const { status, limit = 20, offset = 0 } = req.query;
+
+    let meetings = await cosmosClient.getMeetingsByUser(req.user.userId);
+
+    // Filter for real Teams meetings only
+    meetings = meetings.filter(meeting => meeting.isRealTeamsMeeting);
+
+    if (status) {
+      meetings = meetings.filter((meeting) => meeting.status === status);
+    }
+
+    const paginatedMeetings = meetings.slice(
+      parseInt(offset),
+      parseInt(offset) + parseInt(limit)
+    );
+
+    res.json({
+      meetings: paginatedMeetings,
+      total: meetings.length,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      dataSource: "real_teams_meetings_only"
+    });
+  } catch (error) {
+    logger.error("❌ Get REAL Teams meetings error:", error);
+    res.status(500).json({ error: "Failed to retrieve real Teams meetings" });
+  }
+});
+
+// GET /api/meetings/:id - Get specific REAL Teams meeting
+router.get("/:id", async (req, res) => {
+  try {
+    const meeting = await cosmosClient.getItem(
+      "meetings",
+      req.params.id,
+      req.user.userId
+    );
+
+    if (!meeting) {
+      return res.status(404).json({ error: "Meeting not found" });
+    }
+
+    if (!meeting.isRealTeamsMeeting) {
+      return res.status(400).json({ 
+        error: "Only real Teams meetings are supported",
+        meetingType: "simulated"
+      });
+    }
+
+    res.json(meeting);
+  } catch (error) {
+    logger.error("❌ Get REAL Teams meeting error:", error);
+    res.status(500).json({ error: "Failed to retrieve real Teams meeting" });
+  }
+});
+
+// DELETE /api/meetings/:id - Cancel REAL Teams meeting
+router.delete("/:id", requireRealTeams, async (req, res) => {
+  try {
+    const meeting = await cosmosClient.getItem(
+      "meetings",
+      req.params.id,
+      req.user.userId
+    );
+    if (!meeting) {
+      return res.status(404).json({ error: "Meeting not found" });
+    }
+
+    if (!meeting.isRealTeamsMeeting) {
+      return res.status(400).json({ 
+        error: "Can only cancel real Teams meetings",
+        meetingType: "simulated"
+      });
+    }
+
+    // Update meeting status (in production, would also cancel via Graph API)
+    await cosmosClient.updateItem("meetings", req.params.id, req.user.userId, {
+      status: "cancelled",
+      cancelledAt: new Date().toISOString(),
+    });
+
+    logger.info("REAL Teams meeting cancelled", { meetingId: req.params.id });
+    res.json({
+      success: true,
+      message: "Real Teams meeting cancelled successfully",
+    });
+  } catch (error) {
+    logger.error("❌ Cancel REAL Teams meeting error:", error);
+    res.status(500).json({ error: "Failed to cancel real Teams meeting" });
+  }
+});
+
+// ============================================================================
+// SERVICE STATUS (REAL TEAMS INTEGRATION ONLY)
+// ============================================================================
+
+// GET /api/meetings/teams/status - Check REAL Teams integration status
+router.get("/teams/status", (req, res) => {
+  const teamsStatus = teamsService.getStatus();
+  res.json({
+    ...teamsStatus,
+    message: teamsStatus.available
+      ? "🟢 REAL Teams integration is fully operational!"
+      : "❌ REAL Teams integration not configured. Azure AD setup required.",
+    realTeamsIntegration: teamsStatus.available,
+    simulationMode: false
+  });
+});
+
+// GET /api/meetings/status - Check overall service status (REAL integration only)
+router.get("/status", (req, res) => {
+  const aiStatus = geminiAI.isAvailable();
+  const teamsStatus = teamsService.isAvailable();
+
+  res.json({
+    overall: {
+      status: aiStatus && teamsStatus ? "fully_operational" : "configuration_required",
+      message: aiStatus && teamsStatus
+        ? "🚀 All POC features operational with REAL Teams integration!"
+        : "❌ Configuration required for real Teams integration",
+    },
+    services: {
+      ai: {
+        available: aiStatus,
+        model: process.env.GEMINI_MODEL || "Not configured",
+        required: true
+      },
+      teams: {
+        available: teamsStatus,
+        realMeetings: teamsStatus,
+        simulationMode: false,
+        required: true
+      },
+    },
+    pocFeatures: {
+      realMeetingScheduling: teamsStatus,
+      realRecurringMeetings: teamsStatus,
+      realUserResolution: teamsStatus,
+      realTimeOptimization: teamsStatus,
+      realAiAgentJoin: teamsStatus,
+      realChatCapture: teamsStatus,
+      realAiInteraction: aiStatus && teamsStatus,
+      realSummaryGeneration: aiStatus,
+    },
+    requiredConfiguration: !teamsStatus ? {
+      azureAd: "Configure Azure AD app registration",
+      graphApi: "Set up Microsoft Graph API permissions",
+      environmentVariables: ["AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID"]
+    } : null
+  });
+});
+
+module.exports = router;

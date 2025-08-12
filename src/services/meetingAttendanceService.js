@@ -1,5 +1,5 @@
 const axios = require('axios');
-const authService = require('./authService'); // FIXED: Remove destructuring
+const authService = require('./authService');
 const cosmosClient = require('../config/cosmosdb');
 const logger = require('../utils/logger');
 
@@ -7,13 +7,13 @@ class MeetingAttendanceService {
   constructor() {
     this.graphEndpoint = process.env.GRAPH_API_ENDPOINT || 'https://graph.microsoft.com/v1.0';
     this.activeMeetings = new Map(); // Track meetings the agent is attending
-    this.chatMonitors = new Map(); // Track chat monitoring for each meeting
+    this.botAppId = process.env.MICROSOFT_APP_ID;
   }
 
-  // Join a meeting as an AI agent
+  // Join meeting as AI agent (POC Feature 1.4)
   async joinMeeting(meetingId, userId) {
     try {
-      logger.info('🤖 Agent attempting to join meeting', { meetingId, userId });
+      logger.info('🤖 AI Agent joining meeting', { meetingId, userId });
 
       // Get meeting details from database
       const meetings = await cosmosClient.queryItems('meetings',
@@ -27,11 +27,11 @@ class MeetingAttendanceService {
 
       const meeting = meetings[0];
 
-      // Check if meeting is scheduled to start soon or already started
+      // Check meeting timing
       const now = new Date();
       const startTime = new Date(meeting.startTime);
       const endTime = new Date(meeting.endTime);
-      const bufferTime = 15 * 60 * 1000; // 15 minutes before
+      const bufferTime = 15 * 60 * 1000; // 15 minutes buffer
 
       if (now < startTime.getTime() - bufferTime) {
         throw new Error('Meeting has not started yet (joins 15 minutes before start time)');
@@ -41,47 +41,51 @@ class MeetingAttendanceService {
         throw new Error('Meeting has already ended');
       }
 
-      // Simulate agent joining (in real implementation, this would use Teams SDK)
+      // Join meeting using Microsoft Graph API
+      if (authService.isAvailable()) {
+        await this.joinMeetingViaGraph(meeting);
+      }
+
+      // Create attendance record
       const attendanceRecord = {
         meetingId: meetingId,
         agentJoinedAt: now.toISOString(),
         agentStatus: 'attending',
         monitoringStarted: now.toISOString(),
         chatCaptureEnabled: true,
-        transcriptCaptureEnabled: true
+        transcriptCaptureEnabled: true,
+        agentVisible: true,
+        agentName: 'AI Meeting Assistant'
       };
 
-      // Store in active meetings
       this.activeMeetings.set(meetingId, attendanceRecord);
 
-      // Update meeting record in database - use the database ID, not meetingId
+      // Update meeting record
       await cosmosClient.updateItem('meetings', meeting.id, userId, {
         agentAttended: true,
         agentJoinedAt: now.toISOString(),
-        agentStatus: 'attending'
+        agentStatus: 'attending',
+        agentVisible: true
       });
 
-      // Start chat monitoring
-      await this.startChatMonitoring(meetingId, meeting);
+      // Start chat monitoring and transcript capture
+      await this.startMeetingMonitoring(meetingId, meeting);
 
-     logger.info('✅ Agent successfully joined meeting', {
+      logger.info('✅ AI Agent successfully joined meeting', {
         meetingId,
-        joinedAt: attendanceRecord.agentJoinedAt
+        joinedAt: attendanceRecord.agentJoinedAt,
+        agentVisible: true
       });
-
-      // 🆕 ADD THIS CODE HERE:
-      // Start auto-insights
-      const chatCaptureService = require('./chatCaptureService');
-      await chatCaptureService.startAutoInsights(meetingId);
 
       return {
         success: true,
-        message: 'Agent joined meeting successfully',
+        message: 'AI Agent joined meeting and is now visible to participants',
         attendanceRecord: attendanceRecord,
         capabilities: {
           chatMonitoring: true,
           transcriptCapture: true,
-          realTimeAnalysis: true
+          realTimeAnalysis: true,
+          interactiveChat: true
         }
       };
 
@@ -91,10 +95,109 @@ class MeetingAttendanceService {
     }
   }
 
-  // Leave a meeting
+  // Join meeting via Microsoft Graph API (makes agent visible)
+  async joinMeetingViaGraph(meeting) {
+    try {
+      if (!authService.isAvailable()) {
+        logger.warn('⚠️ Graph API not available, using simulated join');
+        return;
+      }
+
+      const accessToken = await authService.getAppOnlyToken();
+
+      // Add AI agent as a meeting participant
+      if (meeting.graphEventId) {
+        const agentAttendee = {
+          emailAddress: {
+            address: `ai-agent@${process.env.AZURE_TENANT_ID || 'company.com'}`,
+            name: 'AI Meeting Assistant'
+          },
+          type: 'required'
+        };
+
+        // Update meeting to include AI agent as attendee
+        const updatePayload = {
+          attendees: [
+            ...(meeting.attendees || []).map(email => ({
+              emailAddress: { address: email, name: email.split('@')[0] },
+              type: 'required'
+            })),
+            agentAttendee
+          ]
+        };
+
+        const usersResponse = await axios.get(
+          `${this.graphEndpoint}/users?$top=1&$select=id`,
+          { headers: { 'Authorization': `Bearer ${accessToken}` } }
+        );
+
+        if (usersResponse.data.value && usersResponse.data.value.length > 0) {
+          const userId = usersResponse.data.value[0].id;
+          
+          await axios.patch(
+            `${this.graphEndpoint}/users/${userId}/events/${meeting.graphEventId}`,
+            updatePayload,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+
+          logger.info('✅ AI Agent added to meeting attendee list');
+        }
+      }
+
+    } catch (error) {
+      logger.warn('⚠️ Could not add agent via Graph API:', error.message);
+    }
+  }
+
+  // Start meeting monitoring (POC Feature 1.4)
+  async startMeetingMonitoring(meetingId, meeting) {
+    try {
+      logger.info('🔍 Starting meeting monitoring', { meetingId });
+
+      // Initialize monitoring systems
+      const chatCaptureService = require('./chatCaptureService');
+      
+      // Start chat capture
+      await chatCaptureService.initiateAutomaticCapture(meeting);
+
+      // Send welcome message to meeting
+      await this.sendWelcomeMessage(meetingId);
+
+      logger.info('✅ Meeting monitoring started');
+
+    } catch (error) {
+      logger.error('❌ Failed to start monitoring:', error);
+    }
+  }
+
+  // Send welcome message when AI agent joins
+  async sendWelcomeMessage(meetingId) {
+    try {
+      const chatCaptureService = require('./chatCaptureService');
+      
+      const welcomeMessage = `🤖 **AI Meeting Assistant has joined**\n\n` +
+        `✅ Now monitoring meeting for insights\n` +
+        `💬 You can chat with me during the meeting\n` +
+        `📋 I'll generate a summary at the end\n` +
+        `🚨 I'll track action items and decisions\n\n` +
+        `*Type @AI or mention me to interact directly*`;
+
+      await chatCaptureService.sendToMeetingChat(meetingId, welcomeMessage);
+      
+    } catch (error) {
+      logger.warn('⚠️ Could not send welcome message:', error.message);
+    }
+  }
+
+  // Leave meeting
   async leaveMeeting(meetingId, userId) {
     try {
-      logger.info('🤖 Agent leaving meeting', { meetingId });
+      logger.info('🤖 AI Agent leaving meeting', { meetingId });
 
       const attendanceRecord = this.activeMeetings.get(meetingId);
       if (!attendanceRecord) {
@@ -105,10 +208,14 @@ class MeetingAttendanceService {
       attendanceRecord.agentLeftAt = now.toISOString();
       attendanceRecord.agentStatus = 'left';
 
-      // Stop chat monitoring
-      await this.stopChatMonitoring(meetingId);
+      // Stop monitoring
+      const chatCaptureService = require('./chatCaptureService');
+      await chatCaptureService.stopChatCapture(meetingId);
 
-      // Get meeting to update the correct database record
+      // Generate final summary
+      await this.generateFinalSummary(meetingId);
+
+      // Update meeting record
       const meetings = await cosmosClient.queryItems('meetings',
         'SELECT * FROM c WHERE c.meetingId = @meetingId',
         [{ name: '@meetingId', value: meetingId }]
@@ -122,20 +229,13 @@ class MeetingAttendanceService {
         });
       }
 
-      const chatCaptureService = require('./chatCaptureService');
-      await chatCaptureService.stopAutoInsights(meetingId);
-
-      // Remove from active meetings
       this.activeMeetings.delete(meetingId);
 
-      logger.info('✅ Agent left meeting successfully', {
-        meetingId,
-        leftAt: attendanceRecord.agentLeftAt
-      });
+      logger.info('✅ AI Agent left meeting successfully');
 
       return {
         success: true,
-        message: 'Agent left meeting successfully',
+        message: 'AI Agent left meeting successfully',
         attendanceRecord: attendanceRecord
       };
 
@@ -145,373 +245,55 @@ class MeetingAttendanceService {
     }
   }
 
-  async startSimulatedMonitoring(meetingId, meeting) {
-  try {
-    logger.info('🔄 Starting simulated chat monitoring', { meetingId });
-
-    const chatMonitor = {
-      meetingId: meetingId,
-      startedAt: new Date().toISOString(),
-      lastMessageCheck: new Date().toISOString(),
-      messagesCount: 0,
-      isActive: true,
-      simulated: true
-    };
-
-    this.chatMonitors.set(meetingId, chatMonitor);
-
-    // Start simulated chat checking (every 45 seconds)
-    const chatInterval = setInterval(async () => {
-      try {
-        await this.checkForNewMessages(meetingId, null); // null for simulated
-      } catch (error) {
-        logger.warn('Simulated chat monitoring error:', error);
-      }
-    }, 45000); // 45 seconds
-
-    chatMonitor.interval = chatInterval;
-
-    logger.info('✅ Simulated chat monitoring started', { meetingId });
-    return chatMonitor;
-
-  } catch (error) {
-    logger.error('❌ Failed to start simulated monitoring:', error);
-    throw error;
-  }
-}
-
-  // Start monitoring chat for a meeting
- async startChatMonitoring(meetingId, meeting) {
-  try {
-    logger.info('🔍 Starting chat monitoring', { meetingId });
-
-    // ⭐ CRITICAL: Add null check for authService
-    if (!authService || !authService.isAvailable || !authService.isAvailable()) {
-      logger.warn('⚠️ Auth service not available, using simulated monitoring');
-      return this.startSimulatedMonitoring(meetingId, meeting);
-    }
-
-    let accessToken;
+  // Generate final summary when leaving
+  async generateFinalSummary(meetingId) {
     try {
-      accessToken = await authService.getAppOnlyToken();
-    } catch (authError) {
-      logger.warn('⚠️ Failed to get auth token, using simulated monitoring:', authError.message);
-      return this.startSimulatedMonitoring(meetingId, meeting);
-    }
-
-    // Initialize chat monitoring record
-    const chatMonitor = {
-      meetingId: meetingId,
-      startedAt: new Date().toISOString(),
-      lastMessageCheck: new Date().toISOString(),
-      messagesCount: 0,
-      isActive: true
-    };
-
-    this.chatMonitors.set(meetingId, chatMonitor);
-
-    // Start periodic chat checking (every 30 seconds)
-    const chatInterval = setInterval(async () => {
-      try {
-        await this.checkForNewMessages(meetingId, accessToken);
-      } catch (error) {
-        logger.warn('Chat monitoring error:', error);
-      }
-    }, 30000); // 30 seconds
-
-    chatMonitor.interval = chatInterval;
-
-    logger.info('✅ Chat monitoring started', { meetingId });
-    return chatMonitor;
-
-  } catch (error) {
-    logger.error('❌ Failed to start chat monitoring:', error);
-    // Fall back to simulated monitoring
-    return this.startSimulatedMonitoring(meetingId, meeting);
-  }
-}
-
-  // Start simulated monitoring when auth is not available
-  async startSimulatedMonitoring(meetingId, meeting) {
-    try {
-      logger.info('🔄 Starting simulated chat monitoring', { meetingId });
-
-      const chatMonitor = {
-        meetingId: meetingId,
-        startedAt: new Date().toISOString(),
-        lastMessageCheck: new Date().toISOString(),
-        messagesCount: 0,
-        isActive: true,
-        simulated: true
-      };
-
-      this.chatMonitors.set(meetingId, chatMonitor);
-
-      // Start simulated chat checking (every 45 seconds)
-      const chatInterval = setInterval(async () => {
-        try {
-          await this.checkForNewMessages(meetingId, null);
-        } catch (error) {
-          logger.warn('Simulated chat monitoring error:', error);
-        }
-      }, 45000); // 45 seconds
-
-      chatMonitor.interval = chatInterval;
-
-      logger.info('✅ Simulated chat monitoring started', { meetingId });
-      return chatMonitor;
-
-    } catch (error) {
-      logger.error('❌ Failed to start simulated monitoring:', error);
-      throw error;
-    }
-  }
-
-  // Stop chat monitoring
-  async stopChatMonitoring(meetingId) {
-    try {
-      const chatMonitor = this.chatMonitors.get(meetingId);
-      if (chatMonitor) {
-        chatMonitor.isActive = false;
-        chatMonitor.stoppedAt = new Date().toISOString();
-
-        // Clear interval
-        if (chatMonitor.interval) {
-          clearInterval(chatMonitor.interval);
-        }
-
-        this.chatMonitors.delete(meetingId);
-
-        logger.info('✅ Chat monitoring stopped', { meetingId });
-      }
-    } catch (error) {
-      logger.error('❌ Failed to stop chat monitoring:', error);
-    }
-  }
-
-  // Check for new messages in a meeting
-  async checkForNewMessages(meetingId, accessToken) {
-    try {
-      const chatMonitor = this.chatMonitors.get(meetingId);
-      if (!chatMonitor || !chatMonitor.isActive) {
-        return;
-      }
-
-      // In a real implementation, this would call Teams Graph API to get new messages
-      // For now, we'll simulate message detection and processing
+      const meetingSummaryService = require('./meetingSummaryService');
+      const chatCaptureService = require('./chatCaptureService');
       
-      // Simulated message detection (replace with actual Graph API calls)
-      const simulatedMessages = await this.simulateMessageDetection(meetingId);
+      logger.info('📋 Generating final meeting summary', { meetingId });
 
-      if (simulatedMessages.length > 0) {
-        logger.info(`📝 Detected ${simulatedMessages.length} new messages`, { meetingId });
+      // Generate comprehensive summary
+      const summary = await meetingSummaryService.generateMeetingSummary(meetingId);
 
-        // Process each message
-        for (const message of simulatedMessages) {
-          await this.processNewMessage(meetingId, message);
-        }
+      // Send summary to meeting chat
+      const summaryMessage = `📋 **Meeting Summary Generated**\n\n` +
+        `📝 **Key Points:** ${summary.executiveSummary}\n\n` +
+        `🎯 **Action Items:** ${summary.actionItems.length} identified\n` +
+        `✅ **Decisions:** ${summary.metrics.decisionsTracked}\n` +
+        `❓ **Questions:** ${summary.metrics.questionsAsked}\n` +
+        `💬 **Total Messages:** ${summary.metrics.totalMessages}\n\n` +
+        `📈 **Meeting Quality:** ${summary.qualityScores.overall}/10\n\n` +
+        `*Full detailed summary available in dashboard*`;
 
-        // Update monitoring stats
-        chatMonitor.lastMessageCheck = new Date().toISOString();
-        chatMonitor.messagesCount += simulatedMessages.length;
-      }
-
-    } catch (error) {
-      logger.warn('Error checking for new messages:', error);
-    }
-  }
-
-  // Process a new message (categorize and store)
-  async processNewMessage(meetingId, message) {
-    try {
-      // Categorize the message using AI
-      const category = await this.categorizeMessage(message.content);
-      
-      // Enhanced message object
-      const enhancedMessage = {
-        ...message,
-        meetingId: meetingId,
-        category: category,
-        processedAt: new Date().toISOString(),
-        aiAnalysis: {
-          isQuestion: category.includes('question'),
-          isActionItem: category.includes('action'),
-          isDecision: category.includes('decision'),
-          urgency: this.detectUrgency(message.content),
-          mentions: this.extractMentions(message.content),
-          sentiment: this.analyzeSentiment(message.content)
-        }
-      };
-
-      // Save to Cosmos DB
-      await cosmosClient.createItem('chats', enhancedMessage);
-
-      logger.debug('✅ Message processed and stored', {
-        meetingId,
-        category,
-        sender: message.sender
-      });
+      await chatCaptureService.sendToMeetingChat(meetingId, summaryMessage);
 
     } catch (error) {
-      logger.error('❌ Failed to process message:', error);
+      logger.warn('⚠️ Could not generate final summary:', error.message);
     }
   }
 
-  // Rest of the methods remain the same...
-  async categorizeMessage(content) {
-    const contentLower = content.toLowerCase();
-    const categories = [];
-
-    // Question detection
-    if (contentLower.includes('?') || 
-        contentLower.startsWith('what') || 
-        contentLower.startsWith('how') || 
-        contentLower.startsWith('when') || 
-        contentLower.startsWith('where') || 
-        contentLower.startsWith('why') ||
-        contentLower.startsWith('can we') ||
-        contentLower.startsWith('should we')) {
-      categories.push('question');
-    }
-
-    // Action item detection
-    if (contentLower.includes('action item') ||
-        contentLower.includes('todo') ||
-        contentLower.includes('need to') ||
-        contentLower.includes('will do') ||
-        contentLower.includes('by friday') ||
-        contentLower.includes('by next week') ||
-        contentLower.includes('deadline') ||
-        contentLower.includes('assigned to')) {
-      categories.push('action_item');
-    }
-
-    // Decision detection
-    if (contentLower.includes('decided') ||
-        contentLower.includes('agree') ||
-        contentLower.includes('approved') ||
-        contentLower.includes('we will') ||
-        contentLower.includes('let\'s go with') ||
-        contentLower.includes('final decision')) {
-      categories.push('decision');
-    }
-
-    // Link/file sharing
-    if (contentLower.includes('http') || 
-        contentLower.includes('www.') ||
-        contentLower.includes('shared a file') ||
-        contentLower.includes('attachment')) {
-      categories.push('resource_sharing');
-    }
-
-    return categories.length > 0 ? categories : ['general'];
-  }
-
-  detectUrgency(content) {
-    const contentLower = content.toLowerCase();
-    
-    if (contentLower.includes('urgent') || 
-        contentLower.includes('asap') || 
-        contentLower.includes('emergency') ||
-        contentLower.includes('critical') ||
-        contentLower.includes('immediately')) {
-      return 'high';
-    }
-    
-    if (contentLower.includes('soon') || 
-        contentLower.includes('quickly') ||
-        contentLower.includes('priority')) {
-      return 'medium';
-    }
-    
-    return 'low';
-  }
-
-  extractMentions(content) {
-    const mentionRegex = /@(\w+)/g;
-    const mentions = [];
-    let match;
-    
-    while ((match = mentionRegex.exec(content)) !== null) {
-      mentions.push(match[1]);
-    }
-    
-    return mentions;
-  }
-
-  analyzeSentiment(content) {
-    const contentLower = content.toLowerCase();
-    const positiveWords = ['good', 'great', 'excellent', 'perfect', 'awesome', 'happy', 'agree'];
-    const negativeWords = ['bad', 'terrible', 'wrong', 'problem', 'issue', 'concerned', 'disagree'];
-    
-    const positiveCount = positiveWords.filter(word => contentLower.includes(word)).length;
-    const negativeCount = negativeWords.filter(word => contentLower.includes(word)).length;
-    
-    if (positiveCount > negativeCount) return 'positive';
-    if (negativeCount > positiveCount) return 'negative';
-    return 'neutral';
-  }
-
-async simulateMessageDetection(meetingId) {
-  // 🚫 DISABLED: Only real messages allowed
-  return [];
-}
-
-  getActiveMeetings() {
-    return Array.from(this.activeMeetings.entries()).map(([meetingId, record]) => ({
-      meetingId,
-      ...record
-    }));
-  }
-
-  getChatMonitoringStatus() {
-    return Array.from(this.chatMonitors.entries()).map(([meetingId, monitor]) => ({
-      meetingId,
-      ...monitor,
-      interval: !!monitor.interval
-    }));
-  }
-
-  isAttendingMeeting(meetingId) {
-    return this.activeMeetings.has(meetingId);
-  }
-
+  // Get attendance summary
   async getAttendanceSummary(meetingId) {
     try {
       const attendanceRecord = this.activeMeetings.get(meetingId);
-      const chatMonitor = this.chatMonitors.get(meetingId);
+      const chatCaptureService = require('./chatCaptureService');
 
-      // Get stored messages for this meeting
-      const messages = await cosmosClient.queryItems('chats',
-        'SELECT * FROM c WHERE c.meetingId = @meetingId ORDER BY c.timestamp ASC',
-        [{ name: '@meetingId', value: meetingId }]
-      );
-
-      // Categorize messages
-      const categorizedMessages = {
-        questions: messages.filter(m => m.category && m.category.includes('question')),
-        actionItems: messages.filter(m => m.category && m.category.includes('action_item')),
-        decisions: messages.filter(m => m.category && m.category.includes('decision')),
-        resources: messages.filter(m => m.category && m.category.includes('resource_sharing')),
-        general: messages.filter(m => !m.category || m.category.includes('general'))
-      };
+      // Get chat analysis
+      const chatAnalysis = await chatCaptureService.getChatAnalysis(meetingId);
 
       return {
         meetingId,
         isActive: !!attendanceRecord,
         attendanceRecord,
-        chatMonitoring: chatMonitor,
-        messagesSummary: {
-          total: messages.length,
-          categorized: {
-            questions: categorizedMessages.questions.length,
-            actionItems: categorizedMessages.actionItems.length,
-            decisions: categorizedMessages.decisions.length,
-            resources: categorizedMessages.resources.length,
-            general: categorizedMessages.general.length
-          }
-        },
-        messages: categorizedMessages
+        chatAnalysis,
+        agentCapabilities: {
+          chatMonitoring: true,
+          transcriptCapture: true,
+          realTimeInsights: true,
+          interactiveChat: true,
+          summaryGeneration: true
+        }
       };
 
     } catch (error) {
@@ -519,9 +301,22 @@ async simulateMessageDetection(meetingId) {
       throw error;
     }
   }
+
+  // Get all active meetings
+  getActiveMeetings() {
+    return Array.from(this.activeMeetings.entries()).map(([meetingId, record]) => ({
+      meetingId,
+      ...record,
+      agentVisible: true
+    }));
+  }
+
+  // Check if agent is attending a specific meeting
+  isAttendingMeeting(meetingId) {
+    return this.activeMeetings.has(meetingId);
+  }
 }
 
 // Create singleton instance
 const meetingAttendanceService = new MeetingAttendanceService();
-
 module.exports = meetingAttendanceService;

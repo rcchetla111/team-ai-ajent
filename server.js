@@ -26,10 +26,17 @@ app.use(helmet({
 
 app.use(compression());
 // This is the NEW, corrected code
-app.use(cors({
-  origin: "*", // Allow all origins for local testing
-  credentials: true
-}));
+// Add this before your routes
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
 
 // Body parsing middleware
 app.use(bodyParser.json({ limit: '10mb' }));
@@ -39,13 +46,9 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Health check endpoint
+// Add this route to your main router or app
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    version: '1.0.0',
-    database: 'Cosmos DB Emulator'
-  });
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
 // Test endpoint

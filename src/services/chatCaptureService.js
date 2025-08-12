@@ -167,6 +167,8 @@ async extractChatIdFromMeeting(meetingEvent, accessToken) {
     logger.info(
       `🤖 Initiating automatic capture for meeting: ${meeting.subject}`
     );
+
+    return [];
     try {
       if (!meeting.graphEventId) {
         logger.warn("⚠️ No graph event ID, starting simulated capture");

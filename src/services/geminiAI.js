@@ -4,10 +4,11 @@ const logger = require('../utils/logger');
 class GeminiAIService {
   constructor() {
     this.apiKey = process.env.GEMINI_API_KEY;
-    this.modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+    this.modelName = process.env.GEMINI_MODEL || 'gemini-2.0-flash-exp';
     
     if (!this.apiKey) {
-      logger.warn('⚠️ Gemini API key not provided. AI features will be limited.');
+      logger.error('❌ Gemini API key not provided. AI features will not be available.');
+      logger.error('   Please set GEMINI_API_KEY environment variable');
       this.genAI = null;
       this.model = null;
       return;
@@ -17,6 +18,7 @@ class GeminiAIService {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.model = this.genAI.getGenerativeModel({ model: this.modelName });
       logger.info('✅ Gemini AI initialized successfully');
+      logger.info(`🤖 Using model: ${this.modelName}`);
     } catch (error) {
       logger.error('❌ Failed to initialize Gemini AI:', error);
       this.genAI = null;
@@ -29,42 +31,81 @@ class GeminiAIService {
     return this.model !== null;
   }
 
-  // Generate intelligent meeting agenda
-  async generateMeetingAgenda(meetingInfo) {
+  // Ensure AI is available
+  ensureAIAvailable() {
     if (!this.isAvailable()) {
-      return this.getFallbackAgenda(meetingInfo);
+      throw new Error('AI service is required but not configured. Please set up Gemini API key.');
     }
+  }
+
+  // Test AI connection
+  async testConnection() {
+    if (!this.isAvailable()) {
+      return {
+        success: false,
+        error: 'AI not configured',
+        details: 'Gemini API key missing'
+      };
+    }
+
+    try {
+      const testPrompt = "Respond with 'AI connection successful' if you can understand this message.";
+      const result = await this.model.generateContent(testPrompt);
+      const response = await result.response;
+      const text = response.text();
+
+      logger.info('✅ Gemini AI connection test successful');
+      
+      return {
+        success: true,
+        message: 'AI service ready for real Teams meeting analysis',
+        model: this.modelName,
+        response: text.substring(0, 100)
+      };
+
+    } catch (error) {
+      logger.error('❌ Gemini AI connection test failed:', error);
+      
+      return {
+        success: false,
+        error: 'AI connection failed',
+        details: error.message
+      };
+    }
+  }
+
+  // Generate intelligent meeting agenda for real Teams meetings
+  async generateMeetingAgenda(meetingInfo) {
+    this.ensureAIAvailable();
 
     try {
       const { subject, attendees = [], duration = 30, meetingType = 'general' } = meetingInfo;
       
       const prompt = `
-        Generate a professional meeting agenda for the following meeting:
+        Generate a professional meeting agenda for a REAL Microsoft Teams meeting:
         
         Subject: ${subject}
         Duration: ${duration} minutes
         Number of Attendees: ${attendees.length}
         Meeting Type: ${meetingType}
         
-        Please provide:
-        1. A clear agenda with time allocations
-        2. Suggested discussion points
-        3. Recommended meeting structure
-        4. Expected outcomes
+        This is for a real business meeting with actual participants. Create a practical, actionable agenda.
         
-        Format the response as JSON with this structure:
+        Provide a structured agenda in JSON format:
         {
-          "title": "Meeting title",
+          "title": "Professional meeting title",
           "estimatedDuration": ${duration},
           "sections": [
             {
               "title": "Section name",
-              "duration": "minutes",
-              "description": "What will be covered"
+              "duration": "X minutes",
+              "description": "What will be covered",
+              "objectives": ["specific objective 1", "specific objective 2"]
             }
           ],
-          "objectives": ["objective1", "objective2"],
-          "suggestedPreparation": ["prep item 1", "prep item 2"]
+          "objectives": ["main objective 1", "main objective 2"],
+          "suggestedPreparation": ["prep item 1", "prep item 2"],
+          "expectedOutcomes": ["expected outcome 1", "expected outcome 2"]
         }
       `;
 
@@ -72,106 +113,45 @@ class GeminiAIService {
       const response = await result.response;
       const text = response.text();
       
-      // Try to parse JSON response
       try {
         const agenda = JSON.parse(text.replace(/```json|```/g, '').trim());
-        logger.info('✅ AI-generated meeting agenda created');
+        logger.info('✅ AI-generated meeting agenda created for real Teams meeting');
         return agenda;
       } catch (parseError) {
-        logger.warn('⚠️ Failed to parse AI response, using fallback');
+        logger.warn('⚠️ Failed to parse AI agenda response, using structured fallback');
         return this.getFallbackAgenda(meetingInfo);
       }
 
     } catch (error) {
-      logger.error('❌ Error generating meeting agenda:', error);
+      logger.error('❌ Error generating meeting agenda with AI:', error);
       return this.getFallbackAgenda(meetingInfo);
     }
   }
 
-  // Suggest optimal meeting times using AI
-  async suggestMeetingTimes(requirements) {
-    if (!this.isAvailable()) {
-      return this.getFallbackTimeSlots(requirements);
-    }
-
-    try {
-      const { 
-        duration = 30, 
-        attendees = [], 
-        preferredDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-        timeZone = 'UTC',
-        urgency = 'normal'
-      } = requirements;
-
-      const prompt = `
-        Suggest optimal meeting times based on these requirements:
-        
-        Duration: ${duration} minutes
-        Number of Attendees: ${attendees.length}
-        Preferred Days: ${preferredDays.join(', ')}
-        Urgency: ${urgency}
-        Time Zone: ${timeZone}
-        
-        Consider:
-        - Best times for productivity and engagement
-        - Common working hours across time zones
-        - Meeting fatigue (avoid back-to-back meetings)
-        - Energy levels throughout the day
-        
-        Provide 5 suggestions for the next 7 days in JSON format:
-        {
-          "suggestions": [
-            {
-              "datetime": "2024-MM-DDTHH:mm:ss.000Z",
-              "dayOfWeek": "Monday",
-              "timeSlot": "Morning/Afternoon/Evening",
-              "confidence": 0.9,
-              "reasoning": "Why this time is optimal"
-            }
-          ]
-        }
-      `;
-
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      try {
-        const suggestions = JSON.parse(text.replace(/```json|```/g, '').trim());
-        logger.info('✅ AI-generated meeting time suggestions created');
-        return suggestions.suggestions || [];
-      } catch (parseError) {
-        return this.getFallbackTimeSlots(requirements);
-      }
-
-    } catch (error) {
-      logger.error('❌ Error suggesting meeting times:', error);
-      return this.getFallbackTimeSlots(requirements);
-    }
-  }
-
-  // Analyze meeting description and extract insights
+  // Analyze real Teams meeting description
   async analyzeMeetingDescription(description) {
-    if (!this.isAvailable()) {
-      return this.getFallbackAnalysis(description);
-    }
+    this.ensureAIAvailable();
 
     try {
       const prompt = `
-        Analyze this meeting description and extract key insights:
+        Analyze this real Teams meeting description and extract key insights:
         
         "${description}"
         
+        This is for an actual business meeting. Provide practical analysis.
+        
         Provide analysis in JSON format:
         {
-          "urgency": "low/medium/high",
-          "estimatedDuration": "minutes",
-          "topics": ["topic1", "topic2"],
-          "suggestedAttendees": ["role1", "role2"],
-          "meetingType": "planning/review/decision/update/training",
+          "urgency": "low|medium|high",
+          "estimatedDuration": "suggested duration in minutes",
+          "topics": ["topic1", "topic2", "topic3"],
+          "suggestedAttendees": ["role1", "role2", "role3"],
+          "meetingType": "planning|review|decision|update|training|brainstorming",
           "preparationNeeded": true/false,
-          "keyQuestions": ["question1", "question2"],
-          "expectedOutcomes": ["outcome1", "outcome2"]
+          "keyQuestions": ["important question 1", "important question 2"],
+          "expectedOutcomes": ["concrete outcome 1", "concrete outcome 2"],
+          "recommendedTimeSlot": "morning|afternoon|any",
+          "complexity": "low|medium|high"
         }
       `;
 
@@ -181,37 +161,36 @@ class GeminiAIService {
       
       try {
         const analysis = JSON.parse(text.replace(/```json|```/g, '').trim());
-        logger.info('✅ AI meeting description analysis completed');
+        logger.info('✅ AI meeting description analysis completed for real Teams meeting');
         return analysis;
       } catch (parseError) {
         return this.getFallbackAnalysis(description);
       }
 
     } catch (error) {
-      logger.error('❌ Error analyzing meeting description:', error);
+      logger.error('❌ Error analyzing meeting description with AI:', error);
       return this.getFallbackAnalysis(description);
     }
   }
 
-  // Generate smart meeting title based on description
+  // Generate smart meeting title for real Teams meetings
   async generateMeetingTitle(description, attendees = []) {
-    if (!this.isAvailable()) {
-      return `Meeting - ${new Date().toLocaleDateString()}`;
-    }
+    this.ensureAIAvailable();
 
     try {
       const prompt = `
-        Generate a concise, professional meeting title based on this description:
+        Generate a concise, professional meeting title for a real Teams meeting based on this description:
         
         "${description}"
         
-        Attendees: ${attendees.length} people
+        Number of attendees: ${attendees.length}
         
         Requirements:
         - Maximum 60 characters
-        - Clear and descriptive
-        - Professional tone
+        - Clear and descriptive for business context
+        - Professional tone appropriate for Teams
         - Include key topic/purpose
+        - Should work well as a Teams meeting title
         
         Respond with just the title, no additional text.
       `;
@@ -220,41 +199,40 @@ class GeminiAIService {
       const response = await result.response;
       const title = response.text().trim().replace(/['"]/g, '');
       
-      logger.info('✅ AI-generated meeting title created');
-      return title;
+      logger.info('✅ AI-generated meeting title created for real Teams meeting');
+      return title.substring(0, 60); // Ensure max length
 
     } catch (error) {
-      logger.error('❌ Error generating meeting title:', error);
-      return `Meeting - ${new Date().toLocaleDateString()}`;
+      logger.error('❌ Error generating meeting title with AI:', error);
+      return `${description.substring(0, 40)} - Meeting`;
     }
   }
 
-  // Validate meeting content for appropriateness
+  // Validate meeting content for real business appropriateness
   async validateMeetingContent(content) {
-    if (!this.isAvailable()) {
-      return { isAppropriate: true, confidence: 0.5, suggestions: [] };
-    }
+    this.ensureAIAvailable();
 
     try {
       const prompt = `
-        Analyze this meeting content for business appropriateness and provide feedback:
+        Analyze this meeting content for business appropriateness in a real Teams environment:
         
         "${content}"
         
         Check for:
-        - Professional language
-        - Clear objectives
-        - Appropriate tone
-        - Sensitive information handling
-        - Compliance considerations
+        - Professional language suitable for Teams
+        - Clear business objectives
+        - Appropriate tone for corporate environment
+        - Sensitive information considerations
+        - Compliance with business communication standards
         
         Respond in JSON format:
         {
           "isAppropriate": true/false,
           "confidence": 0.0-1.0,
-          "issues": ["issue1", "issue2"],
-          "suggestions": ["suggestion1", "suggestion2"],
-          "sensitivityLevel": "low/medium/high"
+          "issues": ["specific issue 1", "specific issue 2"],
+          "suggestions": ["specific suggestion 1", "specific suggestion 2"],
+          "sensitivityLevel": "low|medium|high",
+          "businessContext": "appropriate|needs_revision|inappropriate"
         }
       `;
 
@@ -264,16 +242,128 @@ class GeminiAIService {
       
       try {
         const validation = JSON.parse(text.replace(/```json|```/g, '').trim());
-        logger.info('✅ AI content validation completed');
+        logger.info('✅ AI content validation completed for real Teams meeting');
         return validation;
       } catch (parseError) {
-        return { isAppropriate: true, confidence: 0.5, suggestions: [] };
+        return { 
+          isAppropriate: true, 
+          confidence: 0.7, 
+          suggestions: [],
+          businessContext: 'appropriate' 
+        };
       }
 
     } catch (error) {
-      logger.error('❌ Error validating meeting content:', error);
-      return { isAppropriate: true, confidence: 0.5, suggestions: [] };
+      logger.error('❌ Error validating meeting content with AI:', error);
+      return { 
+        isAppropriate: true, 
+        confidence: 0.5, 
+        suggestions: [],
+        businessContext: 'appropriate'
+      };
     }
+  }
+
+  // Analyze real Teams chat message for meeting insights
+  async analyzeChatMessage(content, context = {}) {
+    this.ensureAIAvailable();
+
+    try {
+      const prompt = `
+        Analyze this message from a real Teams meeting chat:
+        
+        Message: "${content}"
+        Context: Meeting about ${context.meetingSubject || 'business topics'}
+        
+        Provide analysis in JSON format:
+        {
+          "category": "question|action_item|decision|resource_sharing|general|concern",
+          "urgency": "low|medium|high", 
+          "sentiment": "positive|neutral|negative",
+          "actionRequired": true/false,
+          "keyTopics": ["topic1", "topic2"],
+          "mentions": ["person1", "person2"],
+          "followUpNeeded": true/false,
+          "businessImpact": "low|medium|high"
+        }
+      `;
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      
+      try {
+        const analysis = JSON.parse(text.replace(/```json|```/g, '').trim());
+        return analysis;
+      } catch (parseError) {
+        return this.getBasicMessageAnalysis(content);
+      }
+
+    } catch (error) {
+      logger.warn('⚠️ AI chat message analysis failed, using basic analysis:', error);
+      return this.getBasicMessageAnalysis(content);
+    }
+  }
+
+  // Generate response for AI agent in real Teams meeting
+  async generateMeetingResponse(userMessage, meetingContext = {}) {
+    this.ensureAIAvailable();
+
+    try {
+      const prompt = `
+        You are an AI Meeting Assistant participating in a live Microsoft Teams meeting.
+        
+        Participant message: "${userMessage}"
+        Meeting context: ${meetingContext.subject || 'Business meeting'}
+        
+        Generate a helpful, professional response as if you're a meeting participant. 
+        Keep it concise (2-3 sentences max) and actionable.
+        
+        You can:
+        - Answer questions about the meeting
+        - Summarize discussion points
+        - Track action items and decisions
+        - Provide meeting facilitation help
+        - Offer relevant business insights
+        
+        Respond naturally as a professional meeting participant would.
+      `;
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text().trim();
+      
+      logger.info('✅ AI meeting response generated for real Teams interaction');
+      return text;
+
+    } catch (error) {
+      logger.error('❌ Error generating AI meeting response:', error);
+      return "I'm here to help with the meeting. Could you please repeat your question?";
+    }
+  }
+
+  // Get AI service status
+  getStatus() {
+    const available = this.isAvailable();
+    
+    return {
+      available: available,
+      model: this.modelName || 'not_configured',
+      capabilities: {
+        meetingAnalysis: available,
+        agendaGeneration: available,
+        chatAnalysis: available,
+        summaryGeneration: available,
+        realTimeInteraction: available
+      },
+      configuration: {
+        apiKey: this.apiKey ? 'configured' : 'missing',
+        modelName: this.modelName
+      },
+      message: available 
+        ? 'AI service ready for real Teams meeting intelligence'
+        : 'AI service not configured - set GEMINI_API_KEY'
+    };
   }
 
   // Fallback methods when AI is not available
@@ -286,57 +376,57 @@ class GeminiAIService {
         {
           title: 'Welcome & Introductions',
           duration: '5 minutes',
-          description: 'Brief introductions and meeting overview'
+          description: 'Brief introductions and meeting overview',
+          objectives: ['Set meeting tone', 'Confirm attendees']
         },
         {
           title: 'Main Discussion',
-          duration: `${duration - 15} minutes`,
-          description: `Focused discussion on: ${subject}`
+          duration: `${Math.max(duration - 15, 15)} minutes`,
+          description: `Focused discussion on: ${subject}`,
+          objectives: ['Address main topics', 'Gather input from all participants']
         },
         {
           title: 'Action Items & Next Steps',
           duration: '10 minutes',
-          description: 'Review decisions and assign next steps'
+          description: 'Review decisions and assign next steps',
+          objectives: ['Define clear action items', 'Set follow-up timeline']
         }
       ],
-      objectives: ['Discuss main topic', 'Make decisions', 'Assign action items'],
-      suggestedPreparation: ['Review agenda', 'Prepare questions']
+      objectives: ['Discuss main topic', 'Make informed decisions', 'Assign clear action items'],
+      suggestedPreparation: ['Review agenda', 'Prepare relevant materials', 'Think of questions'],
+      expectedOutcomes: ['Clear action items', 'Defined next steps', 'Aligned understanding']
     };
-  }
-
-  getFallbackTimeSlots(requirements) {
-    const { duration = 30 } = requirements;
-    const suggestions = [];
-    const now = new Date();
-    
-    // Generate 5 basic time suggestions
-    for (let i = 1; i <= 5; i++) {
-      const futureDate = new Date(now);
-      futureDate.setDate(futureDate.getDate() + i);
-      futureDate.setHours(10, 0, 0, 0); // 10 AM
-      
-      suggestions.push({
-        datetime: futureDate.toISOString(),
-        dayOfWeek: futureDate.toLocaleDateString('en-US', { weekday: 'long' }),
-        timeSlot: 'Morning',
-        confidence: 0.7,
-        reasoning: 'Standard business hours, good for productivity'
-      });
-    }
-    
-    return suggestions;
   }
 
   getFallbackAnalysis(description) {
     return {
       urgency: 'medium',
       estimatedDuration: '30',
-      topics: ['General discussion'],
-      suggestedAttendees: ['Team members'],
+      topics: ['Discussion topics from description'],
+      suggestedAttendees: ['Relevant team members'],
       meetingType: 'general',
       preparationNeeded: true,
-      keyQuestions: ['What are our objectives?'],
-      expectedOutcomes: ['Clear next steps']
+      keyQuestions: ['What are our main objectives?', 'What decisions need to be made?'],
+      expectedOutcomes: ['Clear action items', 'Aligned understanding'],
+      recommendedTimeSlot: 'any',
+      complexity: 'medium'
+    };
+  }
+
+  getBasicMessageAnalysis(content) {
+    const contentLower = content.toLowerCase();
+    
+    return {
+      category: contentLower.includes('?') ? 'question' : 
+                contentLower.includes('action') ? 'action_item' :
+                contentLower.includes('decided') ? 'decision' : 'general',
+      urgency: contentLower.includes('urgent') ? 'high' : 'low',
+      sentiment: 'neutral',
+      actionRequired: contentLower.includes('action') || contentLower.includes('todo'),
+      keyTopics: [],
+      mentions: [],
+      followUpNeeded: false,
+      businessImpact: 'medium'
     };
   }
 }
