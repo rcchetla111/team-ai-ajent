@@ -873,3 +873,232 @@
 {"level":"info","message":"📊 Dashboard: http://localhost:5000","timestamp":"2025-08-13T11:23:45.291Z"}
 {"level":"info","message":"🔍 Health Check: http://localhost:5000/health","timestamp":"2025-08-13T11:23:45.291Z"}
 {"level":"info","message":"🔧 Cosmos DB: https://localhost:8081","timestamp":"2025-08-13T11:23:45.292Z"}
+{"level":"info","message":"✅ Microsoft Graph authentication initialized","timestamp":"2025-08-14T05:17:00.977Z"}
+{"level":"info","message":"✅ Gemini AI initialized successfully","timestamp":"2025-08-14T05:17:00.991Z"}
+{"level":"info","message":"🤖 Using model: gemini-2.0-flash","timestamp":"2025-08-14T05:17:00.992Z"}
+{"level":"info","message":"🔄 Initializing Cosmos DB...","timestamp":"2025-08-14T05:17:01.010Z"}
+{"level":"error","message":"❌ Gemini API key not provided. AI features will not be available.","timestamp":"2025-08-14T05:17:01.605Z"}
+{"level":"error","message":"   Please set GEMINI_API_KEY environment variable","timestamp":"2025-08-14T05:17:01.610Z"}
+{"level":"info","message":"🤖 Agent 365 Bot server listening on port 3978","timestamp":"2025-08-14T05:17:01.629Z"}
+{"level":"info","message":"📱 Bot endpoint: http://localhost:3978/api/messages","timestamp":"2025-08-14T05:17:01.630Z"}
+{"level":"info","message":"🔍 Health check: http://localhost:3978/bot/health","timestamp":"2025-08-14T05:17:01.630Z"}
+{"level":"info","message":"ℹ️  Bot info: http://localhost:3978/bot/info","timestamp":"2025-08-14T05:17:01.630Z"}
+{"level":"info","message":"🔑 Bot App ID: undefined","timestamp":"2025-08-14T05:17:01.631Z"}
+{"level":"info","message":"🔒 Bot Password: Missing","timestamp":"2025-08-14T05:17:01.631Z"}
+{"level":"info","message":"✅ Microsoft Graph authentication initialized","timestamp":"2025-08-14T05:20:01.370Z"}
+{"level":"info","message":"✅ Gemini AI initialized successfully","timestamp":"2025-08-14T05:20:01.379Z"}
+{"level":"info","message":"🤖 Using model: gemini-2.0-flash","timestamp":"2025-08-14T05:20:01.379Z"}
+{"level":"info","message":"🔄 Initializing Cosmos DB...","timestamp":"2025-08-14T05:20:01.391Z"}
+{"level":"error","message":"❌ Gemini API key not provided. AI features will not be available.","timestamp":"2025-08-14T05:20:01.670Z"}
+{"level":"error","message":"   Please set GEMINI_API_KEY environment variable","timestamp":"2025-08-14T05:20:01.673Z"}
+{"level":"info","message":"🤖 Agent 365 Bot server listening on port 3978","timestamp":"2025-08-14T05:20:01.683Z"}
+{"level":"info","message":"📱 Bot endpoint: http://localhost:3978/api/messages","timestamp":"2025-08-14T05:20:01.684Z"}
+{"level":"info","message":"🔍 Health check: http://localhost:3978/bot/health","timestamp":"2025-08-14T05:20:01.684Z"}
+{"level":"info","message":"ℹ️  Bot info: http://localhost:3978/bot/info","timestamp":"2025-08-14T05:20:01.684Z"}
+{"level":"info","message":"🔑 Bot App ID: undefined","timestamp":"2025-08-14T05:20:01.684Z"}
+{"level":"info","message":"🔒 Bot Password: Missing","timestamp":"2025-08-14T05:20:01.684Z"}
+{"level":"info","message":"✅ Database 'agent365dbnew' ready","timestamp":"2025-08-14T05:20:02.273Z"}
+{"level":"info","message":"✅ Container 'meetings' ready","timestamp":"2025-08-14T05:20:02.419Z"}
+{"level":"info","message":"✅ Container 'users' ready","timestamp":"2025-08-14T05:20:02.444Z"}
+{"level":"info","message":"✅ Container 'chats' ready","timestamp":"2025-08-14T05:20:02.468Z"}
+{"level":"info","message":"✅ Container 'summaries' ready","timestamp":"2025-08-14T05:20:02.492Z"}
+{"level":"info","message":"✅ Container 'notifications' ready","timestamp":"2025-08-14T05:20:02.515Z"}
+{"level":"info","message":"✅ Container 'reminders' ready","timestamp":"2025-08-14T05:20:02.537Z"}
+{"level":"info","message":"✅ Cosmos DB initialized successfully","timestamp":"2025-08-14T05:20:02.538Z"}
+{"level":"info","message":"🚀 Agent 365 server running on port 5000","timestamp":"2025-08-14T05:20:02.540Z"}
+{"level":"info","message":"🌐 Environment: development","timestamp":"2025-08-14T05:20:02.540Z"}
+{"level":"info","message":"📊 Dashboard: http://localhost:5000","timestamp":"2025-08-14T05:20:02.540Z"}
+{"level":"info","message":"🔍 Health Check: http://localhost:5000/health","timestamp":"2025-08-14T05:20:02.540Z"}
+{"level":"info","message":"🔧 Cosmos DB: https://localhost:8081","timestamp":"2025-08-14T05:20:02.540Z"}
+{"attendeesCount":1,"autoJoinAgent":true,"hasRecurrence":false,"level":"info","message":"🤖 Creating REAL Teams meeting","subject":"ARJENT HIRING","timestamp":"2025-08-14T05:20:39.069Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:20:39.069Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:20:39.072Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:20:39.074Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:20:39.706Z"}
+{"level":"info","message":"✅ App-only access token acquired","timestamp":"2025-08-14T05:20:39.707Z"}
+{"level":"info","message":"🔄 Creating meeting for specific user: support@legacynote.ai (459a498b-9477-4a7b-ad49-9cb46189d95b)","timestamp":"2025-08-14T05:20:40.297Z"}
+{"level":"info","message":"✅ Teams meeting created successfully","timestamp":"2025-08-14T05:20:44.642Z"}
+{"level":"debug","message":"✅ Created item in meetings:","timestamp":"2025-08-14T05:20:44.729Z"}
+{"level":"info","message":"🤖 Meeting starting soon, joining AI agent to REAL Teams meeting","timestamp":"2025-08-14T05:20:44.732Z"}
+{"level":"info","meetingId":"AAMkADY4MDI0ZGU3LTBlMWEtNGI1NC05MDNmLTlkNWYxYWNhZTY2OABGAAAAAACyuOg1xJKzTrXCxQquKpQkBwBPFbVl0WIHRYiPSj4Y1v9DAAAAAAENAABPFbVl0WIHRYiPSj4Y1v9DAAAgAiMcAAA=","message":"🤖 AI Agent joining meeting","timestamp":"2025-08-14T05:20:44.732Z","userId":"demo-user-123"}
+{"level":"warn","message":"⚠️ Could not add agent via Graph API:","timestamp":"2025-08-14T05:20:45.285Z"}
+{"level":"debug","message":"✅ Updated item in meetings:","timestamp":"2025-08-14T05:20:45.342Z"}
+{"level":"info","meetingId":"AAMkADY4MDI0ZGU3LTBlMWEtNGI1NC05MDNmLTlkNWYxYWNhZTY2OABGAAAAAACyuOg1xJKzTrXCxQquKpQkBwBPFbVl0WIHRYiPSj4Y1v9DAAAAAAENAABPFbVl0WIHRYiPSj4Y1v9DAAAgAiMcAAA=","message":"🔍 Starting meeting monitoring","timestamp":"2025-08-14T05:20:45.343Z"}
+{"level":"info","message":"🤖 Initiating automatic capture for meeting: ARJENT HIRING","timestamp":"2025-08-14T05:20:45.343Z"}
+{"level":"warn","message":"⚠️ Could not send to Teams chat, using email fallback","timestamp":"2025-08-14T05:20:45.344Z"}
+{"level":"warn","message":"⚠️ Failed to send insight: teamsService.sendMessageToUser is not a function","stack":"TypeError: teamsService.sendMessageToUser is not a function\n    at ChatCaptureService.sendToMeetingChat (D:\\warrantyMe\\TEAMS AI AJENT\\src\\services\\chatCaptureService.js:882:26)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async MeetingAttendanceService.sendWelcomeMessage (D:\\warrantyMe\\TEAMS AI AJENT\\src\\services\\meetingAttendanceService.js:190:7)\n    at async MeetingAttendanceService.startMeetingMonitoring (D:\\warrantyMe\\TEAMS AI AJENT\\src\\services\\meetingAttendanceService.js:169:7)\n    at async MeetingAttendanceService.joinMeeting (D:\\warrantyMe\\TEAMS AI AJENT\\src\\services\\meetingAttendanceService.js:72:7)\n    at async D:\\warrantyMe\\TEAMS AI AJENT\\src\\routes\\meetings.js:122:11","timestamp":"2025-08-14T05:20:45.416Z"}
+{"level":"info","message":"✅ Meeting monitoring started","timestamp":"2025-08-14T05:20:45.416Z"}
+{"agentVisible":true,"joinedAt":"2025-08-14T05:20:44.861Z","level":"info","meetingId":"AAMkADY4MDI0ZGU3LTBlMWEtNGI1NC05MDNmLTlkNWYxYWNhZTY2OABGAAAAAACyuOg1xJKzTrXCxQquKpQkBwBPFbVl0WIHRYiPSj4Y1v9DAAAAAAENAABPFbVl0WIHRYiPSj4Y1v9DAAAgAiMcAAA=","message":"✅ AI Agent successfully joined meeting","timestamp":"2025-08-14T05:20:45.416Z"}
+{"level":"error","message":"❌ Immediate AI agent join failed: chatCaptureService.initiateRealChatCapture is not a function","stack":"TypeError: chatCaptureService.initiateRealChatCapture is not a function\n    at D:\\warrantyMe\\TEAMS AI AJENT\\src\\routes\\meetings.js:128:38\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)","timestamp":"2025-08-14T05:20:45.416Z"}
+{"level":"info","message":"✅ Microsoft Graph authentication initialized","timestamp":"2025-08-14T05:23:49.564Z"}
+{"level":"info","message":"✅ Gemini AI initialized successfully","timestamp":"2025-08-14T05:23:49.574Z"}
+{"level":"info","message":"🤖 Using model: gemini-2.0-flash","timestamp":"2025-08-14T05:23:49.574Z"}
+{"level":"info","message":"🔄 Initializing Cosmos DB...","timestamp":"2025-08-14T05:23:49.587Z"}
+{"level":"info","message":"✅ Database 'agent365dbnew' ready","timestamp":"2025-08-14T05:23:49.660Z"}
+{"level":"info","message":"✅ Container 'meetings' ready","timestamp":"2025-08-14T05:23:49.683Z"}
+{"level":"info","message":"✅ Container 'users' ready","timestamp":"2025-08-14T05:23:49.705Z"}
+{"level":"info","message":"✅ Container 'chats' ready","timestamp":"2025-08-14T05:23:49.725Z"}
+{"level":"info","message":"✅ Container 'summaries' ready","timestamp":"2025-08-14T05:23:49.744Z"}
+{"level":"info","message":"✅ Container 'notifications' ready","timestamp":"2025-08-14T05:23:49.764Z"}
+{"level":"info","message":"✅ Container 'reminders' ready","timestamp":"2025-08-14T05:23:49.781Z"}
+{"level":"info","message":"✅ Cosmos DB initialized successfully","timestamp":"2025-08-14T05:23:49.782Z"}
+{"level":"info","message":"🚀 Agent 365 server running on port 5000","timestamp":"2025-08-14T05:23:49.784Z"}
+{"level":"info","message":"🌐 Environment: development","timestamp":"2025-08-14T05:23:49.784Z"}
+{"level":"info","message":"📊 Dashboard: http://localhost:5000","timestamp":"2025-08-14T05:23:49.784Z"}
+{"level":"info","message":"🔍 Health Check: http://localhost:5000/health","timestamp":"2025-08-14T05:23:49.784Z"}
+{"level":"info","message":"🔧 Cosmos DB: https://localhost:8081","timestamp":"2025-08-14T05:23:49.784Z"}
+{"level":"error","message":"❌ Gemini API key not provided. AI features will not be available.","timestamp":"2025-08-14T05:23:49.916Z"}
+{"level":"error","message":"   Please set GEMINI_API_KEY environment variable","timestamp":"2025-08-14T05:23:49.919Z"}
+{"level":"info","message":"🤖 Agent 365 Bot server listening on port 3978","timestamp":"2025-08-14T05:23:49.929Z"}
+{"level":"info","message":"📱 Bot endpoint: http://localhost:3978/api/messages","timestamp":"2025-08-14T05:23:49.930Z"}
+{"level":"info","message":"🔍 Health check: http://localhost:3978/bot/health","timestamp":"2025-08-14T05:23:49.930Z"}
+{"level":"info","message":"ℹ️  Bot info: http://localhost:3978/bot/info","timestamp":"2025-08-14T05:23:49.930Z"}
+{"level":"info","message":"🔑 Bot App ID: undefined","timestamp":"2025-08-14T05:23:49.930Z"}
+{"level":"info","message":"🔒 Bot Password: Missing","timestamp":"2025-08-14T05:23:49.930Z"}
+{"level":"info","message":"✅ Microsoft Graph authentication initialized","timestamp":"2025-08-14T05:26:38.638Z"}
+{"level":"info","message":"✅ Gemini AI initialized successfully","timestamp":"2025-08-14T05:26:38.648Z"}
+{"level":"info","message":"🤖 Using model: gemini-2.0-flash","timestamp":"2025-08-14T05:26:38.648Z"}
+{"level":"info","message":"🔄 Initializing Cosmos DB...","timestamp":"2025-08-14T05:26:38.660Z"}
+{"level":"info","message":"✅ Database 'agent365dbnew' ready","timestamp":"2025-08-14T05:26:38.740Z"}
+{"level":"info","message":"✅ Container 'meetings' ready","timestamp":"2025-08-14T05:26:38.759Z"}
+{"level":"info","message":"✅ Container 'users' ready","timestamp":"2025-08-14T05:26:38.779Z"}
+{"level":"info","message":"✅ Container 'chats' ready","timestamp":"2025-08-14T05:26:38.796Z"}
+{"level":"info","message":"✅ Container 'summaries' ready","timestamp":"2025-08-14T05:26:38.813Z"}
+{"level":"info","message":"✅ Container 'notifications' ready","timestamp":"2025-08-14T05:26:38.829Z"}
+{"level":"info","message":"✅ Container 'reminders' ready","timestamp":"2025-08-14T05:26:38.845Z"}
+{"level":"info","message":"✅ Cosmos DB initialized successfully","timestamp":"2025-08-14T05:26:38.845Z"}
+{"level":"info","message":"🚀 Agent 365 server running on port 5000","timestamp":"2025-08-14T05:26:38.847Z"}
+{"level":"info","message":"🌐 Environment: development","timestamp":"2025-08-14T05:26:38.847Z"}
+{"level":"info","message":"📊 Dashboard: http://localhost:5000","timestamp":"2025-08-14T05:26:38.848Z"}
+{"level":"info","message":"🔍 Health Check: http://localhost:5000/health","timestamp":"2025-08-14T05:26:38.848Z"}
+{"level":"info","message":"🔧 Cosmos DB: https://localhost:8081","timestamp":"2025-08-14T05:26:38.848Z"}
+{"level":"error","message":"❌ Gemini API key not provided. AI features will not be available.","timestamp":"2025-08-14T05:26:38.959Z"}
+{"level":"error","message":"   Please set GEMINI_API_KEY environment variable","timestamp":"2025-08-14T05:26:38.962Z"}
+{"level":"info","message":"🤖 Agent 365 Bot server listening on port 3978","timestamp":"2025-08-14T05:26:38.971Z"}
+{"level":"info","message":"📱 Bot endpoint: http://localhost:3978/api/messages","timestamp":"2025-08-14T05:26:38.972Z"}
+{"level":"info","message":"🔍 Health check: http://localhost:3978/bot/health","timestamp":"2025-08-14T05:26:38.972Z"}
+{"level":"info","message":"ℹ️  Bot info: http://localhost:3978/bot/info","timestamp":"2025-08-14T05:26:38.972Z"}
+{"level":"info","message":"🔑 Bot App ID: undefined","timestamp":"2025-08-14T05:26:38.972Z"}
+{"level":"info","message":"🔒 Bot Password: Missing","timestamp":"2025-08-14T05:26:38.972Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:26:59.775Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:26:59.778Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:26:59.780Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:27:00.197Z"}
+{"level":"info","message":"✅ App-only access token acquired","timestamp":"2025-08-14T05:27:00.198Z"}
+{"level":"info","message":"🔍 Debug: Looking up user support@legacynote.ai","timestamp":"2025-08-14T05:27:00.198Z"}
+{"level":"info","message":"✅ Microsoft Graph authentication initialized","timestamp":"2025-08-14T05:27:24.170Z"}
+{"level":"info","message":"✅ Gemini AI initialized successfully","timestamp":"2025-08-14T05:27:24.179Z"}
+{"level":"info","message":"🤖 Using model: gemini-2.0-flash","timestamp":"2025-08-14T05:27:24.180Z"}
+{"level":"info","message":"🔄 Initializing Cosmos DB...","timestamp":"2025-08-14T05:27:24.191Z"}
+{"level":"info","message":"✅ Database 'agent365dbnew' ready","timestamp":"2025-08-14T05:27:24.258Z"}
+{"level":"info","message":"✅ Container 'meetings' ready","timestamp":"2025-08-14T05:27:24.276Z"}
+{"level":"info","message":"✅ Container 'users' ready","timestamp":"2025-08-14T05:27:24.295Z"}
+{"level":"info","message":"✅ Container 'chats' ready","timestamp":"2025-08-14T05:27:24.313Z"}
+{"level":"info","message":"✅ Container 'summaries' ready","timestamp":"2025-08-14T05:27:24.329Z"}
+{"level":"info","message":"✅ Container 'notifications' ready","timestamp":"2025-08-14T05:27:24.346Z"}
+{"level":"info","message":"✅ Container 'reminders' ready","timestamp":"2025-08-14T05:27:24.361Z"}
+{"level":"info","message":"✅ Cosmos DB initialized successfully","timestamp":"2025-08-14T05:27:24.361Z"}
+{"level":"info","message":"🚀 Agent 365 server running on port 5000","timestamp":"2025-08-14T05:27:24.363Z"}
+{"level":"info","message":"🌐 Environment: development","timestamp":"2025-08-14T05:27:24.363Z"}
+{"level":"info","message":"📊 Dashboard: http://localhost:5000","timestamp":"2025-08-14T05:27:24.363Z"}
+{"level":"info","message":"🔍 Health Check: http://localhost:5000/health","timestamp":"2025-08-14T05:27:24.364Z"}
+{"level":"info","message":"🔧 Cosmos DB: https://localhost:8081","timestamp":"2025-08-14T05:27:24.364Z"}
+{"level":"error","message":"❌ Gemini API key not provided. AI features will not be available.","timestamp":"2025-08-14T05:27:24.459Z"}
+{"level":"error","message":"   Please set GEMINI_API_KEY environment variable","timestamp":"2025-08-14T05:27:24.461Z"}
+{"level":"info","message":"🤖 Agent 365 Bot server listening on port 3978","timestamp":"2025-08-14T05:27:24.470Z"}
+{"level":"info","message":"📱 Bot endpoint: http://localhost:3978/api/messages","timestamp":"2025-08-14T05:27:24.471Z"}
+{"level":"info","message":"🔍 Health check: http://localhost:3978/bot/health","timestamp":"2025-08-14T05:27:24.471Z"}
+{"level":"info","message":"ℹ️  Bot info: http://localhost:3978/bot/info","timestamp":"2025-08-14T05:27:24.471Z"}
+{"level":"info","message":"🔑 Bot App ID: undefined","timestamp":"2025-08-14T05:27:24.471Z"}
+{"level":"info","message":"🔒 Bot Password: Missing","timestamp":"2025-08-14T05:27:24.471Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:27:33.632Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:27:33.634Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:27:33.636Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:27:34.133Z"}
+{"level":"info","message":"✅ App-only access token acquired","timestamp":"2025-08-14T05:27:34.134Z"}
+{"level":"info","message":"🔍 Debug: Looking up user support@legacynote.ai","timestamp":"2025-08-14T05:27:34.134Z"}
+{"level":"info","message":"✅ Microsoft Graph authentication initialized","timestamp":"2025-08-14T05:28:43.459Z"}
+{"level":"info","message":"✅ Gemini AI initialized successfully","timestamp":"2025-08-14T05:28:43.470Z"}
+{"level":"info","message":"🤖 Using model: gemini-2.0-flash","timestamp":"2025-08-14T05:28:43.470Z"}
+{"level":"info","message":"🔄 Initializing Cosmos DB...","timestamp":"2025-08-14T05:28:43.483Z"}
+{"level":"info","message":"✅ Database 'agent365dbnew' ready","timestamp":"2025-08-14T05:28:43.551Z"}
+{"level":"info","message":"✅ Container 'meetings' ready","timestamp":"2025-08-14T05:28:43.570Z"}
+{"level":"info","message":"✅ Container 'users' ready","timestamp":"2025-08-14T05:28:43.588Z"}
+{"level":"info","message":"✅ Container 'chats' ready","timestamp":"2025-08-14T05:28:43.606Z"}
+{"level":"info","message":"✅ Container 'summaries' ready","timestamp":"2025-08-14T05:28:43.627Z"}
+{"level":"info","message":"✅ Container 'notifications' ready","timestamp":"2025-08-14T05:28:43.644Z"}
+{"level":"info","message":"✅ Container 'reminders' ready","timestamp":"2025-08-14T05:28:43.661Z"}
+{"level":"info","message":"✅ Cosmos DB initialized successfully","timestamp":"2025-08-14T05:28:43.661Z"}
+{"level":"info","message":"🚀 Agent 365 server running on port 5000","timestamp":"2025-08-14T05:28:43.663Z"}
+{"level":"info","message":"🌐 Environment: development","timestamp":"2025-08-14T05:28:43.663Z"}
+{"level":"info","message":"📊 Dashboard: http://localhost:5000","timestamp":"2025-08-14T05:28:43.664Z"}
+{"level":"info","message":"🔍 Health Check: http://localhost:5000/health","timestamp":"2025-08-14T05:28:43.664Z"}
+{"level":"info","message":"🔧 Cosmos DB: https://localhost:8081","timestamp":"2025-08-14T05:28:43.664Z"}
+{"level":"error","message":"❌ Gemini API key not provided. AI features will not be available.","timestamp":"2025-08-14T05:28:43.815Z"}
+{"level":"error","message":"   Please set GEMINI_API_KEY environment variable","timestamp":"2025-08-14T05:28:43.818Z"}
+{"level":"info","message":"🤖 Agent 365 Bot server listening on port 3978","timestamp":"2025-08-14T05:28:43.827Z"}
+{"level":"info","message":"📱 Bot endpoint: http://localhost:3978/api/messages","timestamp":"2025-08-14T05:28:43.828Z"}
+{"level":"info","message":"🔍 Health check: http://localhost:3978/bot/health","timestamp":"2025-08-14T05:28:43.828Z"}
+{"level":"info","message":"ℹ️  Bot info: http://localhost:3978/bot/info","timestamp":"2025-08-14T05:28:43.828Z"}
+{"level":"info","message":"🔑 Bot App ID: undefined","timestamp":"2025-08-14T05:28:43.828Z"}
+{"level":"info","message":"🔒 Bot Password: Missing","timestamp":"2025-08-14T05:28:43.828Z"}
+{"attendeesCount":1,"autoJoinAgent":true,"hasRecurrence":false,"level":"info","message":"🤖 Creating REAL Teams meeting","subject":"ARJENT TESTUIB","timestamp":"2025-08-14T05:29:10.568Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:29:10.569Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:29:10.571Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:29:10.573Z"}
+{"level":"debug","message":"MSAL:","timestamp":"2025-08-14T05:29:10.972Z"}
+{"level":"info","message":"✅ App-only access token acquired","timestamp":"2025-08-14T05:29:10.972Z"}
+{"level":"info","message":"🔍 Creating meeting for organizer: support@legacynote.ai","timestamp":"2025-08-14T05:29:10.973Z"}
+{"level":"info","message":"✅ Found organizer: Support (support@legacynote.ai) - ID: 459a498b-9477-4a7b-ad49-9cb46189d95b","timestamp":"2025-08-14T05:29:11.341Z"}
+{"level":"info","message":"🔄 Creating Teams meeting on Support's calendar","timestamp":"2025-08-14T05:29:11.341Z"}
+{"level":"error","message":"❌ Create REAL Teams meeting error: Converting circular structure to JSON\n    --> starting at object with constructor 'ClientRequest'\n    |     property 'res' -> object with constructor 'IncomingMessage'\n    --- property 'req' closes the circle","stack":"TypeError: Converting circular structure to JSON\n    --> starting at object with constructor 'ClientRequest'\n    |     property 'res' -> object with constructor 'IncomingMessage'\n    --- property 'req' closes the circle\n    at JSON.stringify (<anonymous>)\n    at Printf.template (D:\\warrantyMe\\TEAMS AI AJENT\\src\\utils\\logger.js:22:24)\n    at Printf.transform (D:\\warrantyMe\\TEAMS AI AJENT\\node_modules\\logform\\printf.js:11:26)\n    at Format.transform (D:\\warrantyMe\\TEAMS AI AJENT\\node_modules\\logform\\combine.js:20:24)\n    at Console._write (D:\\warrantyMe\\TEAMS AI AJENT\\node_modules\\winston-transport\\modern.js:91:33)\n    at doWrite (D:\\warrantyMe\\TEAMS AI AJENT\\node_modules\\readable-stream\\lib\\_stream_writable.js:390:139)\n    at writeOrBuffer (D:\\warrantyMe\\TEAMS AI AJENT\\node_modules\\readable-stream\\lib\\_stream_writable.js:381:5)\n    at Writable.write (D:\\warrantyMe\\TEAMS AI AJENT\\node_modules\\readable-stream\\lib\\_stream_writable.js:302:11)\n    at DerivedLogger.ondata (D:\\warrantyMe\\TEAMS AI AJENT\\node_modules\\readable-stream\\lib\\_stream_readable.js:629:20)\n    at DerivedLogger.emit (node:events:519:35)","timestamp":"2025-08-14T05:29:11.431Z"}
+{"level":"info","message":"✅ Microsoft Graph authentication initialized","timestamp":"2025-08-14T05:30:26.762Z"}
+{"level":"info","message":"✅ Gemini AI initialized successfully","timestamp":"2025-08-14T05:30:26.771Z"}
+{"level":"info","message":"🤖 Using model: gemini-2.0-flash","timestamp":"2025-08-14T05:30:26.772Z"}
+{"level":"info","message":"🔄 Initializing Cosmos DB...","timestamp":"2025-08-14T05:30:26.784Z"}
+{"level":"info","message":"✅ Database 'agent365dbnew' ready","timestamp":"2025-08-14T05:30:26.851Z"}
+{"level":"info","message":"✅ Container 'meetings' ready","timestamp":"2025-08-14T05:30:26.874Z"}
+{"level":"info","message":"✅ Container 'users' ready","timestamp":"2025-08-14T05:30:26.895Z"}
+{"level":"info","message":"✅ Container 'chats' ready","timestamp":"2025-08-14T05:30:26.916Z"}
+{"level":"info","message":"✅ Container 'summaries' ready","timestamp":"2025-08-14T05:30:26.935Z"}
+{"level":"info","message":"✅ Container 'notifications' ready","timestamp":"2025-08-14T05:30:26.952Z"}
+{"level":"info","message":"✅ Container 'reminders' ready","timestamp":"2025-08-14T05:30:26.970Z"}
+{"level":"info","message":"✅ Cosmos DB initialized successfully","timestamp":"2025-08-14T05:30:26.970Z"}
+{"level":"info","message":"🚀 Agent 365 server running on port 5000","timestamp":"2025-08-14T05:30:26.972Z"}
+{"level":"info","message":"🌐 Environment: development","timestamp":"2025-08-14T05:30:26.972Z"}
+{"level":"info","message":"📊 Dashboard: http://localhost:5000","timestamp":"2025-08-14T05:30:26.972Z"}
+{"level":"info","message":"🔍 Health Check: http://localhost:5000/health","timestamp":"2025-08-14T05:30:26.972Z"}
+{"level":"info","message":"🔧 Cosmos DB: https://localhost:8081","timestamp":"2025-08-14T05:30:26.972Z"}
+{"level":"error","message":"❌ Gemini API key not provided. AI features will not be available.","timestamp":"2025-08-14T05:30:27.096Z"}
+{"level":"error","message":"   Please set GEMINI_API_KEY environment variable","timestamp":"2025-08-14T05:30:27.099Z"}
+{"level":"info","message":"🤖 Agent 365 Bot server listening on port 3978","timestamp":"2025-08-14T05:30:27.109Z"}
+{"level":"info","message":"📱 Bot endpoint: http://localhost:3978/api/messages","timestamp":"2025-08-14T05:30:27.109Z"}
+{"level":"info","message":"🔍 Health check: http://localhost:3978/bot/health","timestamp":"2025-08-14T05:30:27.110Z"}
+{"level":"info","message":"ℹ️  Bot info: http://localhost:3978/bot/info","timestamp":"2025-08-14T05:30:27.110Z"}
+{"level":"info","message":"🔑 Bot App ID: undefined","timestamp":"2025-08-14T05:30:27.110Z"}
+{"level":"info","message":"🔒 Bot Password: Missing","timestamp":"2025-08-14T05:30:27.110Z"}
+{"level":"info","message":"✅ Microsoft Graph authentication initialized","timestamp":"2025-08-14T05:30:30.698Z"}
+{"level":"info","message":"✅ Gemini AI initialized successfully","timestamp":"2025-08-14T05:30:30.707Z"}
+{"level":"info","message":"🤖 Using model: gemini-2.0-flash","timestamp":"2025-08-14T05:30:30.707Z"}
+{"level":"info","message":"🔄 Initializing Cosmos DB...","timestamp":"2025-08-14T05:30:30.719Z"}
+{"level":"info","message":"✅ Database 'agent365dbnew' ready","timestamp":"2025-08-14T05:30:30.782Z"}
+{"level":"info","message":"✅ Container 'meetings' ready","timestamp":"2025-08-14T05:30:30.802Z"}
+{"level":"info","message":"✅ Container 'users' ready","timestamp":"2025-08-14T05:30:30.821Z"}
+{"level":"info","message":"✅ Container 'chats' ready","timestamp":"2025-08-14T05:30:30.838Z"}
+{"level":"info","message":"✅ Container 'summaries' ready","timestamp":"2025-08-14T05:30:30.854Z"}
+{"level":"info","message":"✅ Container 'notifications' ready","timestamp":"2025-08-14T05:30:30.871Z"}
+{"level":"info","message":"✅ Container 'reminders' ready","timestamp":"2025-08-14T05:30:30.886Z"}
+{"level":"info","message":"✅ Cosmos DB initialized successfully","timestamp":"2025-08-14T05:30:30.887Z"}
+{"level":"info","message":"🚀 Agent 365 server running on port 5000","timestamp":"2025-08-14T05:30:30.889Z"}
+{"level":"info","message":"🌐 Environment: development","timestamp":"2025-08-14T05:30:30.889Z"}
+{"level":"info","message":"📊 Dashboard: http://localhost:5000","timestamp":"2025-08-14T05:30:30.889Z"}
+{"level":"info","message":"🔍 Health Check: http://localhost:5000/health","timestamp":"2025-08-14T05:30:30.889Z"}
+{"level":"info","message":"🔧 Cosmos DB: https://localhost:8081","timestamp":"2025-08-14T05:30:30.889Z"}
+{"level":"error","message":"❌ Gemini API key not provided. AI features will not be available.","timestamp":"2025-08-14T05:30:31.019Z"}
+{"level":"error","message":"   Please set GEMINI_API_KEY environment variable","timestamp":"2025-08-14T05:30:31.021Z"}
+{"level":"info","message":"🤖 Agent 365 Bot server listening on port 3978","timestamp":"2025-08-14T05:30:31.031Z"}
+{"level":"info","message":"📱 Bot endpoint: http://localhost:3978/api/messages","timestamp":"2025-08-14T05:30:31.031Z"}
+{"level":"info","message":"🔍 Health check: http://localhost:3978/bot/health","timestamp":"2025-08-14T05:30:31.031Z"}
+{"level":"info","message":"ℹ️  Bot info: http://localhost:3978/bot/info","timestamp":"2025-08-14T05:30:31.031Z"}
+{"level":"info","message":"🔑 Bot App ID: undefined","timestamp":"2025-08-14T05:30:31.032Z"}
+{"level":"info","message":"🔒 Bot Password: Missing","timestamp":"2025-08-14T05:30:31.032Z"}

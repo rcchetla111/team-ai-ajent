@@ -8,6 +8,7 @@ const meetingAttendanceService = require("../services/meetingAttendanceService")
 const meetingSummaryService = require("../services/meetingSummaryService");
 const cosmosClient = require("../config/cosmosdb");
 const logger = require("../utils/logger");
+const { default: axios } = require("axios");
 
 const router = express.Router();
 
@@ -178,6 +179,111 @@ router.post("/create", requireRealTeams, async (req, res) => {
   }
 });
 
+// Add this debug endpoint to your meetings route file (meetings.js)
+
+// GET /api/meetings/debug/user-lookup - Debug user lookup
+router.get("/debug/user-lookup", async (req, res) => {
+  try {
+    const organizerEmail = process.env.MEETING_ORGANIZER_EMAIL || 'support@legacynote.ai';
+    
+    if (!teamsService.isAvailable()) {
+      return res.json({
+        error: "Teams service not available",
+        organizerEmail: organizerEmail,
+        configured: false
+      });
+    }
+
+    const authService = require('../services/authService');
+    const accessToken = await authService.getAppOnlyToken();
+
+    logger.info(`🔍 Debug: Looking up user ${organizerEmail}`);
+
+    // Try direct lookup
+    let directLookup = null;
+    try {
+      const response = await axios.get(
+        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(organizerEmail)}`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      );
+      directLookup = {
+        success: true,
+        user: {
+          id: response.data.id,
+          displayName: response.data.displayName,
+          userPrincipalName: response.data.userPrincipalName,
+          mail: response.data.mail
+        }
+      };
+    } catch (error) {
+      directLookup = {
+        success: false,
+        error: error.response?.data || error.message
+      };
+    }
+
+    // Try search lookup
+    let searchLookup = null;
+    try {
+      const response = await axios.get(
+        `https://graph.microsoft.com/v1.0/users?$filter=userPrincipalName eq '${organizerEmail}' or mail eq '${organizerEmail}'&$select=id,displayName,userPrincipalName,mail`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      );
+      searchLookup = {
+        success: true,
+        users: response.data.value
+      };
+    } catch (error) {
+      searchLookup = {
+        success: false,
+        error: error.response?.data || error.message
+      };
+    }
+
+    // List all users (first 10)
+    let allUsers = null;
+    try {
+      const response = await axios.get(
+        `https://graph.microsoft.com/v1.0/users?$top=10&$select=id,displayName,userPrincipalName,mail`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      );
+      allUsers = {
+        success: true,
+        users: response.data.value
+      };
+    } catch (error) {
+      allUsers = {
+        success: false,
+        error: error.response?.data || error.message
+      };
+    }
+
+    res.json({
+      debug: true,
+      organizerEmail: organizerEmail,
+      timestamp: new Date().toISOString(),
+      lookups: {
+        directLookup,
+        searchLookup,
+        allUsers
+      },
+      recommendations: [
+        `Make sure ${organizerEmail} exists in your Azure AD tenant`,
+        "Check if the email format is correct",
+        "Verify your app has User.Read.All permission",
+        "Check if the user is in the same tenant as your Azure AD app"
+      ]
+    });
+
+  } catch (error) {
+    logger.error("❌ Debug user lookup error:", error);
+    res.status(500).json({
+      error: "Debug lookup failed",
+      details: error.message
+    });
+  }
+});
+
 // POST /api/meetings/create-with-names - Create meeting by resolving REAL user names
 router.post("/create-with-names", requireRealTeams, async (req, res) => {
   try {
@@ -280,6 +386,12 @@ router.post("/create-with-names", requireRealTeams, async (req, res) => {
     });
   }
 });
+
+
+
+
+
+
 
 // GET /api/meetings/suggest-times - Get REAL optimal meeting times from Teams calendars
 router.post("/suggest-times", requireRealTeams, async (req, res) => {

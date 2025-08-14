@@ -166,84 +166,158 @@ async getAllTeamMembers(limit = 50) {
   }
 
   // Create Teams meeting (POC Core Feature 1.1)
-  async createTeamsMeeting(meetingData) {
-    if (!this.isAvailable()) {
-      throw new Error('Teams service not available - check Azure AD configuration');
+
+
+// Replace your createTeamsMeeting method with this version that has better error handling:
+
+// Enhanced version that adds organizer info to meeting subject and body
+
+async createTeamsMeeting(meetingData) {
+  if (!this.isAvailable()) {
+    throw new Error('Teams service not available - check Azure AD configuration');
+  }
+
+  try {
+    const accessToken = await authService.getAppOnlyToken();
+    const { subject, startTime, endTime, attendees = [], recurrence, description } = meetingData;
+
+    // Use the specific organizer email from environment variable
+    const organizerEmail = process.env.MEETING_ORGANIZER_EMAIL || 'support@legacynote.ai';
+    
+    // Get the specific user ID for the organizer
+    logger.info(`🔍 Creating meeting for organizer: ${organizerEmail}`);
+    
+    const userResponse = await axios.get(
+      `${this.graphEndpoint}/users/${encodeURIComponent(organizerEmail)}?$select=id,displayName,userPrincipalName`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+
+    if (!userResponse.data || !userResponse.data.id) {
+      throw new Error(`Organizer ${organizerEmail} not found in tenant`);
     }
 
-    try {
-      const accessToken = await authService.getAppOnlyToken();
-      const { subject, startTime, endTime, attendees = [], recurrence } = meetingData;
+    const organizerUserId = userResponse.data.id;
+    const organizerName = userResponse.data.displayName;
+    
+    logger.info(` Found organizer: ${organizerName} (${organizerEmail}) - ID: ${organizerUserId}`);
 
-      const eventDetails = {
-        subject: subject,
-        start: {
-          dateTime: startTime,
-          timeZone: "UTC"
+    // Enhanced event details with clearer organizer info
+    const eventDetails = {
+      subject: `${subject}`, // Keep subject clean
+      body: {
+        contentType: "html",
+        content: `
+          <div>
+            <p><strong>Meeting organized by:</strong> ${organizerName} (${organizerEmail})</p>
+            ${description ? `<p><strong>Description:</strong> ${description}</p>` : ''}
+            <p><em>This meeting was created via AI Agent system</em></p>
+          </div>
+        `
+      },
+      start: {
+        dateTime: startTime,
+        timeZone: "UTC"
+      },
+      end: {
+        dateTime: endTime,
+        timeZone: "UTC"
+      },
+      isOnlineMeeting: true,
+      onlineMeetingProvider: "teamsForBusiness",
+      // Explicitly set importance to ensure visibility
+      importance: "normal",
+      sensitivity: "normal"
+    };
+
+    // Add recurrence pattern if provided
+    const recurrencePattern = this.buildRecurrencePattern(recurrence);
+    if (recurrencePattern) {
+      eventDetails.recurrence = recurrencePattern;
+      logger.info('🔄 Creating recurring meeting');
+    }
+
+    // Prepare attendees list (don't include organizer - they're automatic)
+    const inviteeAttendees = attendees.filter(email => email !== organizerEmail);
+
+    if (inviteeAttendees.length > 0) {
+      eventDetails.attendees = inviteeAttendees.map(email => ({
+        emailAddress: { 
+          address: email, 
+          name: email.split('@')[0]
         },
-        end: {
-          dateTime: endTime,
-          timeZone: "UTC"
-        },
-        isOnlineMeeting: true,
-        onlineMeetingProvider: "teamsForBusiness"
-      };
+        type: 'required'
+      }));
+    }
 
-      // Add recurrence pattern if provided
-      const recurrencePattern = this.buildRecurrencePattern(recurrence);
-      if (recurrencePattern) {
-        eventDetails.recurrence = recurrencePattern;
-        logger.info('🔄 Creating recurring meeting');
+    // Create the meeting using the specific organizer's calendar
+    logger.info(`🔄 Creating Teams meeting on ${organizerName}'s calendar`);
+    
+    const response = await axios.post(
+      `${this.graphEndpoint}/users/${organizerUserId}/events`,
+      eventDetails,
+      { 
+        headers: { 
+          'Authorization': `Bearer ${accessToken}`, 
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'  // Get full response back
+        } 
       }
+    );
 
-      // Add attendees if provided
-      if (attendees.length > 0) {
-        eventDetails.attendees = attendees.map(email => ({
-          emailAddress: { address: email, name: email.split('@')[0] },
-          type: 'required'
-        }));
+    const eventData = response.data;
+    
+    logger.info('✅ Teams meeting created successfully', {
+      meetingId: eventData.id,
+      subject: eventData.subject,
+      organizer: `${organizerName} (${organizerEmail})`,
+      organizerInResponse: eventData.organizer?.emailAddress?.address,
+      attendeesCount: inviteeAttendees.length
+    });
+
+    return {
+      success: true,
+      meetingId: eventData.id,
+      subject: eventData.subject,
+      startTime: eventData.start.dateTime,
+      endTime: eventData.end.dateTime,
+      joinUrl: eventData.onlineMeeting?.joinUrl,
+      webUrl: eventData.webLink,
+      graphEventId: eventData.id,
+      isReal: true,
+      isRecurring: !!eventData.recurrence,
+      organizer: {
+        name: organizerName,
+        email: organizerEmail,
+        userId: organizerUserId,
+        confirmedInResponse: eventData.organizer?.emailAddress?.address === organizerEmail
       }
+    };
 
-      // Get a user to create meeting on behalf of
-      const usersResponse = await axios.get(
-        `${this.graphEndpoint}/users?$top=1&$select=id`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` } }
-      );
-
-      if (!usersResponse.data.value || usersResponse.data.value.length === 0) {
-        throw new Error('No users found in tenant to create meeting');
-      }
-
-      const userId = usersResponse.data.value[0].id;
-      logger.info(`🔄 Creating meeting for user ${userId}`);
-
-      const response = await axios.post(
-        `${this.graphEndpoint}/users/${userId}/events`,
-        eventDetails,
-        { headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
-      );
-
-      const eventData = response.data;
-      logger.info('✅ Teams meeting created successfully');
-
-      return {
-        success: true,
-        meetingId: eventData.id,
-        subject: eventData.subject,
-        startTime: eventData.start.dateTime,
-        endTime: eventData.end.dateTime,
-        joinUrl: eventData.onlineMeeting?.joinUrl,
-        webUrl: eventData.webLink,
-        graphEventId: eventData.id,
-        isReal: true,
-        isRecurring: !!eventData.recurrence
-      };
-
-    } catch (error) {
-      logger.error('❌ Failed to create Teams meeting:', error);
+  } catch (error) {
+    // Better error logging that avoids circular references
+    const errorInfo = {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      url: error.config?.url,
+      method: error.config?.method
+    };
+    
+    logger.error('❌ Failed to create Teams meeting:', errorInfo);
+    
+    // More specific error messages
+    if (error.response?.status === 403) {
+      throw new Error(`Permission denied: Check if your app has Calendars.ReadWrite permission for ${organizerEmail}`);
+    } else if (error.response?.status === 404) {
+      throw new Error(`User not found: ${organizerEmail} does not exist or is not accessible`);
+    } else if (error.response?.status === 400) {
+      throw new Error(`Bad request: ${error.response?.data?.error?.message || 'Invalid meeting data'}`);
+    } else {
       throw new Error(`Teams meeting creation failed: ${error.message}`);
     }
   }
+}
 
   // Find users by display names (POC Feature 1.1)
   async findUsersByDisplayName(displayNames) {
@@ -339,6 +413,169 @@ async getAllTeamMembers(limit = 50) {
     }
   }
 
+
+  // Create Teams Channel (New Feature)
+async createTeamsChannel(channelData) {
+  if (!this.isAvailable()) {
+    throw new Error('Teams service not available - check Azure AD configuration');
+  }
+
+  try {
+    const accessToken = await authService.getAppOnlyToken();
+    const { teamId, displayName, description, membershipType = 'standard' } = channelData;
+
+    // Channel creation payload
+    const channelDetails = {
+      displayName: displayName,
+      description: description || `${displayName} - Created via AI Agent`,
+      membershipType: membershipType, // 'standard' or 'private'
+      '@odata.type': '#Microsoft.Graph.channel'
+    };
+
+    logger.info(`🆕 Creating Teams channel: ${displayName} in team: ${teamId}`);
+    
+    const response = await axios.post(
+      `${this.graphEndpoint}/teams/${teamId}/channels`,
+      channelDetails,
+      { 
+        headers: { 
+          'Authorization': `Bearer ${accessToken}`, 
+          'Content-Type': 'application/json'
+        } 
+      }
+    );
+
+    const channelDataResult = response.data;
+    
+    logger.info('✅ Teams channel created successfully', {
+      channelId: channelDataResult.id,
+      displayName: channelDataResult.displayName,
+      teamId: teamId
+    });
+
+    return {
+      success: true,
+      channelId: channelDataResult.id,
+      displayName: channelDataResult.displayName,
+      description: channelDataResult.description,
+      webUrl: channelDataResult.webUrl,
+      membershipType: channelDataResult.membershipType,
+      teamId: teamId,
+      createdDateTime: channelDataResult.createdDateTime
+    };
+
+  } catch (error) {
+    logger.error('❌ Failed to create Teams channel:', error);
+    
+    if (error.response?.status === 403) {
+      throw new Error(`Permission denied: Check if your app has Channel.Create permission for team ${teamId}`);
+    } else if (error.response?.status === 404) {
+      throw new Error(`Team not found: ${teamId} does not exist or is not accessible`);
+    } else if (error.response?.status === 409) {
+      throw new Error(`Channel already exists: A channel with name "${displayName}" already exists in this team`);
+    } else {
+      throw new Error(`Teams channel creation failed: ${error.message}`);
+    }
+  }
+}
+
+// Get Teams/Groups that user can create channels in
+async getAvailableTeams() {
+  if (!this.isAvailable()) {
+    console.log("⚠️ Teams service not available, returning mock data");
+    return [
+      {
+        id: "team-1",
+        displayName: "Engineering Team",
+        description: "Software development team"
+      },
+      {
+        id: "team-2", 
+        displayName: "Product Team",
+        description: "Product management team"
+      }
+    ];
+  }
+
+  try {
+    const accessToken = await authService.getAppOnlyToken();
+    console.log("✅ Got access token, length:", accessToken.length);
+    
+    logger.info('📋 Getting available teams for channel creation');
+    
+    // Try the simpler groups endpoint first
+    const url = `${this.graphEndpoint}/groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&$select=id,displayName,description&$top=10`;
+    console.log("🔍 Calling URL:", url);
+    
+    const response = await axios.get(url, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+
+    console.log("✅ Graph API response status:", response.status);
+    console.log("✅ Groups found:", response.data.value?.length || 0);
+
+    const teams = response.data.value || [];
+    const result = teams.map(team => ({
+      id: team.id,
+      displayName: team.displayName,
+      description: team.description || 'No description'
+    }));
+
+    console.log("✅ Processed teams:", result.length);
+    return result;
+
+  } catch (error) {
+    console.error('❌ getAvailableTeams error details:', {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      errorData: error.response?.data
+    });
+    
+    logger.error('❌ Failed to get available teams:', error);
+    throw new Error(`Get teams failed: ${error.message}`);
+  }
+}
+
+// List channels in a team
+async getTeamChannels(teamId) {
+  if (!this.isAvailable()) {
+    return [
+      {
+        id: "channel-1",
+        displayName: "General",
+        description: "General discussion"
+      }
+    ];
+  }
+
+  try {
+    const accessToken = await authService.getAppOnlyToken();
+    
+    // FIX: The URL was wrong - it had /teams/teams/ instead of /teams/{teamId}/
+    const response = await axios.get(
+      `${this.graphEndpoint}/teams/${teamId}/channels`, // CORRECTED URL
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+
+    const channels = response.data.value || [];
+    return channels.map(channel => ({
+      id: channel.id,
+      displayName: channel.displayName,
+      description: channel.description,
+      membershipType: channel.membershipType,
+      webUrl: channel.webUrl
+    }));
+
+  } catch (error) {
+    logger.error('❌ Failed to get team channels:', error);
+    throw new Error(`Get channels failed: ${error.message}`);
+  }
+}
+
+
+
+
   // Get service status
  // Update the existing getStatus method to include the new features
 getStatus() {
@@ -350,8 +587,11 @@ getStatus() {
       recurringMeetings: this.isAvailable(),
       userResolution: this.isAvailable(),
       timeOptimization: this.isAvailable(),
-      teamMemberSearch: this.isAvailable(),  // Add this line
-      getAllTeamMembers: this.isAvailable()  // Add this line
+      teamMemberSearch: this.isAvailable(),
+      getAllTeamMembers: this.isAvailable(),
+      createChannels: this.isAvailable(),        // ADD
+      listTeams: this.isAvailable(),             // ADD  
+      listChannels: this.isAvailable()           // ADD
     }
   };
 }

@@ -13,6 +13,7 @@ const logger = require('./src/utils/logger');
 const cosmosClient = require('./src/config/cosmosdb');
 const userRoutes = require('./src/routes/users'); // Add this line
 const meetingRoutes = require('./src/routes/meetings');
+const channelRoutes = require('./src/routes/channel');
 const teamsAgent = require('./src/routes/teamsAgent');
 const teamsService = require('./src/services/teamsService');
 
@@ -67,6 +68,8 @@ app.get('/api/test', (req, res) => {
 // API Routes
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/users', userRoutes); // Add this line
+app.use('/api/channels', channelRoutes); // Add this line
+
 
 // --- NEW CODE TO SERVE THE CHAT UI ---
 

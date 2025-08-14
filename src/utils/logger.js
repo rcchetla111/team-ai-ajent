@@ -1,73 +1,66 @@
+// Update your logger.js to handle circular references
+
 const winston = require('winston');
-const path = require('path');
-const fs = require('fs');
 
-// Create logs directory if it doesn't exist
-const logDir = 'logs';
-if (!fs.existsSync(logDir)) {
-  fs.mkdirSync(logDir);
-}
+// Safe JSON stringify that handles circular references
+const safeStringify = (obj) => {
+  try {
+    return JSON.stringify(obj, (key, value) => {
+      // Skip circular references and functions
+      if (typeof value === 'object' && value !== null) {
+        if (value.constructor?.name === 'ClientRequest' || 
+            value.constructor?.name === 'IncomingMessage' ||
+            value.constructor?.name === 'Socket') {
+          return '[Circular Reference]';
+        }
+      }
+      if (typeof value === 'function') {
+        return '[Function]';
+      }
+      return value;
+    }, 2);
+  } catch (error) {
+    return '[Unable to stringify object]';
+  }
+};
 
-// Console format for development
-const consoleFormat = winston.format.combine(
-  winston.format.colorize(),
-  winston.format.timestamp({
-    format: 'HH:mm:ss'
-  }),
-  winston.format.printf(({ timestamp, level, message, ...meta }) => {
-    let log = `${timestamp} [${level}]: ${message}`;
-    
-    // Add metadata if present
-    if (Object.keys(meta).length > 0) {
-      log += `\n${JSON.stringify(meta, null, 2)}`;
-    }
-    
-    return log;
-  })
-);
-
-// Create logger instance
 const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'debug',
+  level: process.env.LOG_LEVEL || 'info',
   format: winston.format.combine(
-    winston.format.timestamp(),
+    winston.format.timestamp({
+      format: 'HH:mm:ss'
+    }),
     winston.format.errors({ stack: true }),
-    winston.format.json()
+    winston.format.printf(({ level, message, timestamp, ...meta }) => {
+      let output = `${timestamp} [${level}]: ${message}`;
+      
+      // Safely handle additional metadata
+      if (Object.keys(meta).length > 0) {
+        output += '\n' + safeStringify(meta);
+      }
+      
+      return output;
+    })
   ),
   transports: [
-    // Console transport for development
     new winston.transports.Console({
-      format: consoleFormat,
-      level: 'debug'
-    }),
-    
-    // File transport for all logs
-    new winston.transports.File({
-      filename: path.join(logDir, 'app.log'),
-      maxsize: 5242880, // 5MB
-      maxFiles: 2,
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
     })
   ]
 });
 
-// Helper functions for specific log types
-logger.logMeetingEvent = function(event, meetingId, userId, metadata = {}) {
-  this.info('Meeting Event', {
-    event,
-    meetingId,
-    userId,
-    ...metadata,
-    type: 'meeting_event'
-  });
-};
-
-logger.logError = function(error, context = {}) {
-  this.error('Application Error', {
-    message: error.message,
-    stack: error.stack,
-    ...context,
-    type: 'application_error'
-  });
-};
+// Add file transport for production
+if (process.env.NODE_ENV === 'production') {
+  logger.add(new winston.transports.File({ 
+    filename: 'logs/error.log', 
+    level: 'error' 
+  }));
+  logger.add(new winston.transports.File({ 
+    filename: 'logs/combined.log' 
+  }));
+}
 
 module.exports = logger;

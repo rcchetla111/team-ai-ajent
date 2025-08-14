@@ -255,7 +255,8 @@
               },
               date: {
                 type: "string",
-                description: "Date like 'today', 'tomorrow', 'January 15', '2025-01-15'",
+                description:
+                  "Date like 'today', 'tomorrow', 'January 15', '2025-01-15'",
               },
               time: {
                 type: "string",
@@ -500,79 +501,231 @@
             required: ["responseText"],
           },
         },
+        {
+          name: "create_channel",
+          description: "Create a new Teams channel in an existing team",
+          parameters: {
+            type: "object",
+            properties: {
+              teamName: {
+                type: "string",
+                description: "Name of the team to create channel in",
+              },
+              channelName: {
+                type: "string",
+                description: "Name of the new channel",
+              },
+              description: {
+                type: "string",
+                description: "Channel description",
+              },
+              membershipType: {
+                type: "string",
+                enum: ["standard", "private"],
+                description: "Channel type - standard (public) or private",
+              },
+            },
+            required: ["teamName", "channelName"],
+          },
+        },
+        {
+          name: "list_teams",
+          description: "List available teams where you can create channels",
+          parameters: {
+            type: "object",
+            properties: {},
+          },
+        },
+        {
+          name: "list_channels",
+          description: "List channels in a specific team",
+          parameters: {
+            type: "object",
+            properties: {
+              teamName: {
+                type: "string",
+                description: "Name of the team to list channels for",
+              },
+            },
+            required: ["teamName"],
+          },
+        },
       ];
 
       // ====================================================================
       // --- ENHANCED AGENT PROMPT ---
       // ====================================================================
 
-      function getAgentPrompt(history, message) {
-        const historyString = history
-          .slice(-6)
-          .map((turn, index) => `${turn.role}: ${turn.message}`)
-          .join("\n");
-        const currentDate = new Date().toLocaleDateString();
-        const currentTime = new Date().toLocaleTimeString();
+ function getAgentPrompt(history, message) {
+  const historyString = history
+    .slice(-6)
+    .map((turn, index) => `${turn.role}: ${turn.message}`)
+    .join("\n");
+  const currentDate = new Date().toLocaleDateString();
+  const currentTime = new Date().toLocaleTimeString();
 
-        return `You are Agent 365, an advanced AI meeting assistant with full Microsoft Teams integration. You help users manage meetings, find team members, and provide intelligent insights.
+  return `You are Agent 365, an advanced AI meeting assistant with full Microsoft Teams integration including channel management.
 
 **Current Context:**
 - Date: ${currentDate}
 - Time: ${currentTime}
 - Session: ${sessionId}
-- Teams Integration: ACTIVE
-- Auto-Insights: ENABLED
 
 **Recent Conversation:**
 ${historyString}
 
 **User Request:** "${message}"
 
-**CRITICAL INSTRUCTIONS FOR MEETING CREATION:**
-1. **Always extract the EXACT date and time from user input**
-2. **DO NOT modify or calculate relative dates - pass them as provided**
-3. **Examples:**
-   - User says "tomorrow at 2pm" → date: "tomorrow", time: "2pm"
-   - User says "January 15 at 3:30pm" → date: "January 15", time: "3:30pm"
-   - User says "next Monday at 10am" → date: "next Monday", time: "10am"
-4. **Extract meeting topic/subject from the user's message**
-5. **If attendees are mentioned, extract them as an array**
+**SEARCH TERM EXTRACTION RULES:**
+- "Find team members named John" → searchTerm: "John"
+- "Search for people called Sarah" → searchTerm: "Sarah"
+- "Find John Smith" → searchTerm: "John Smith"
+- "Look for engineers" → searchTerm: "engineers"
+- "Find team members" → searchTerm: "team" (or use get_team_members instead)
 
-**Your Capabilities:**
-1. **Meeting Management:**
-   - create_meeting: Schedule Teams meetings with auto-insights
-   - get_meetings: List user's meetings with filters
-   - cancel_meeting: Cancel scheduled meetings
-   - get_meeting_details: Get detailed meeting information
+**MEETING QUERY RULES:**
+- "Show my meetings" → get_meetings with no filters
+- "My recent meetings" → get_meetings with detailed: true
+- "Show scheduled meetings" → get_meetings with status: "scheduled"
 
-2. **AI Agent Features:**
-   - join_meeting_agent: Join agent to meetings for live monitoring
-   - leave_meeting_agent: Leave meetings and generate summaries
-   - get_meeting_summary: Generate AI-powered meeting summaries
-   - get_meeting_analysis: Analyze meeting chat and insights
+**CHANNEL CREATION RULES:**
+- "Create a channel called [name] in [team]" → create_channel
+- "Make a [private/public] channel for [purpose]" → create_channel
+- "Create channel [name] in [team] team" → create_channel
+- "Show me available teams" → list_teams
+- "List teams" → list_teams
+- "What teams can I create channels in" → list_teams
+- "List channels in [team]" → list_channels
+- "Show channels in [team] team" → list_channels
 
-3. **Team Collaboration:**
-   - find_people: Search for team members
-   - get_team_members: List all organization members
-   - send_message: Send messages to colleagues
-   - resolve_users: Convert names to emails
+**CHANNEL EXTRACTION EXAMPLES:**
+- "Create a channel called 'Sprint Planning' in Engineering team" → teamName: "Engineering", channelName: "Sprint Planning"
+- "Make a private channel for HR discussions in Admin team" → teamName: "Admin", channelName: "HR discussions", membershipType: "private"
+- "Create public channel named 'General Discussion' in Product team" → teamName: "Product", channelName: "General Discussion", membershipType: "standard"
+- "Create channel 'Bug Reports' in Development" → teamName: "Development", channelName: "Bug Reports"
 
-4. **Smart Features:**
-   - suggest_meeting_times: Find optimal meeting slots
-   - answer_general_question: Handle general queries
+**RESPONSE EXAMPLES:**
 
-**Instructions:**
-- Always enable auto-insights for new meetings unless specifically disabled
-- Extract dates/times EXACTLY as provided (don't calculate relative dates)
-- Use user names naturally - the system will resolve them to emails
-- Be proactive about suggesting AI agent features
-- Provide varied responses to avoid repetition
-- Handle "latest" or "recent" meeting requests intelligently
+User: "Find team members named John"
+Response: {
+  "tool_name": "find_people",
+  "parameters": {
+    "searchTerm": "John",
+    "limit": 10
+  }
+}
 
-**Response Format:** Respond with valid JSON: { "tool_name": "...", "parameters": { ... } }
+User: "Show my recent meetings"
+Response: {
+  "tool_name": "get_meetings", 
+  "parameters": {
+    "limit": 10,
+    "detailed": true
+  }
+}
 
-Choose the most appropriate tool for the user's request:`;
-      }
+User: "Find team members"
+Response: {
+  "tool_name": "get_team_members",
+  "parameters": {
+    "limit": 20,
+    "includeDetails": true
+  }
+}
+
+User: "Create a channel called 'Sprint Planning' in Engineering team"
+Response: {
+  "tool_name": "create_channel",
+  "parameters": {
+    "teamName": "Engineering",
+    "channelName": "Sprint Planning",
+    "description": "Channel for sprint planning discussions",
+    "membershipType": "standard"
+  }
+}
+
+User: "Make a private channel for HR discussions"
+Response: {
+  "tool_name": "create_channel",
+  "parameters": {
+    "teamName": "General",
+    "channelName": "HR discussions", 
+    "description": "Private channel for HR team discussions",
+    "membershipType": "private"
+  }
+}
+
+User: "Show me available teams"
+Response: {
+  "tool_name": "list_teams",
+  "parameters": {}
+}
+
+User: "List channels in Product team"
+Response: {
+  "tool_name": "list_channels",
+  "parameters": {
+    "teamName": "Product"
+  }
+}
+
+**CRITICAL RULES:**
+1. ALWAYS extract the actual search term from user messages
+2. NEVER use "undefined" or empty values
+3. Provide sensible defaults for all parameters
+4. Use exact names when mentioned by the user
+5. For channels: Extract team name and channel name separately
+6. Default to "standard" membership for channels unless "private" is specified
+7. Generate helpful descriptions for channels when not provided
+
+**Available Tools:**
+- create_meeting: Schedule meetings
+- get_meetings: List user's meetings
+- find_people: Search for specific team members by name
+- get_team_members: List all team members
+- join_meeting_agent: Join AI agent to meetings
+- leave_meeting_agent: Leave meetings
+- cancel_meeting: Cancel meetings
+- get_meeting_details: Get meeting information
+- get_meeting_summary: Generate meeting summaries
+- get_meeting_analysis: Analyze meetings
+- send_message: Send messages
+- resolve_users: Resolve names to emails
+- suggest_meeting_times: Find optimal times
+- create_channel: Create new Teams channels
+- list_teams: Show available teams for channel creation
+- list_channels: Show channels in a specific team
+- answer_general_question: Handle general queries
+
+**CHANNEL CREATION RULES:**
+- "Create a channel called [name] in [team]" → create_channel
+- "Make a [private/public] channel for [purpose] in [team]" → create_channel
+- "Create channel [name] in [team] team" → create_channel
+- "Make a [private/public] channel for [purpose]" → create_channel (use default team)
+- "Create [name] channel" → create_channel (use default team)
+- "Show me available teams" → list_teams
+- "List teams" → list_teams
+- "What teams can I create channels in" → list_teams
+- "List channels in [team]" → list_channels
+- "Show channels in [team] team" → list_channels
+
+**CHANNEL EXTRACTION EXAMPLES:**
+- "Create a channel called 'Sprint Planning' in Engineering team" → teamName: "Engineering", channelName: "Sprint Planning"
+- "Make a private channel for HR discussions in Admin team" → teamName: "Admin", channelName: "HR discussions", membershipType: "private"
+- "Make a private channel for HR discussions" → teamName: "General", channelName: "HR discussions", membershipType: "private"
+- "Create public channel named 'General Discussion' in Product team" → teamName: "Product", channelName: "General Discussion", membershipType: "standard"
+- "Create channel 'Bug Reports' in Development" → teamName: "Development", channelName: "Bug Reports"
+- "Make a private channel for confidential stuff" → teamName: "General", channelName: "confidential stuff", membershipType: "private"
+
+**IMPORTANT:**
+- Extract search terms EXACTLY as mentioned by user
+- Always provide required parameters
+- Use appropriate tools for each request type
+- For channels, separate team name from channel name clearly
+- Respond ONLY with valid JSON
+
+Analyze the user request and respond with the appropriate tool:`;
+}
 
       // ====================================================================
       // --- AI RESPONSE GENERATION ---
@@ -648,6 +801,137 @@ Choose the most appropriate tool for the user's request:`;
         }
       }
 
+    async function handleCreateChannel(params) {
+  try {
+    console.log("🆕 Creating channel with params:", params);
+    
+    // Provide better defaults and validation
+    if (!params.channelName) {
+      throw new Error("Channel name is required");
+    }
+    
+    // Default team name if not provided
+    if (!params.teamName) {
+      params.teamName = "General";
+      console.log("⚠️ No team specified, defaulting to 'General' team");
+    }
+    
+    // Default membership type
+    if (!params.membershipType) {
+      params.membershipType = "standard";
+    }
+    
+    console.log("📋 Final channel params:", params);
+
+    // First, get available teams to find the team ID
+    const teamsResponse = await fetch(`${API_BASE_URL}/channels/teams`);
+    
+    if (!teamsResponse.ok) {
+      // If backend isn't implemented, show helpful message
+      const msg = `🚧 **Channel Creation Ready!**\n\n` +
+        `📁 **Requested Channel:** ${params.channelName}\n` +
+        `🏢 **Target Team:** ${params.teamName}\n` +
+        `📝 **Type:** ${params.membershipType}\n` +
+        `📖 **Description:** ${params.description || 'Channel for team collaboration'}\n\n` +
+        `⚠️ **Backend Setup Needed:**\n` +
+        `The frontend is ready, but you need to implement:\n` +
+        `• Channel creation API endpoints (/channels/teams, /channels/create)\n` +
+        `• Teams service channel methods\n` +
+        `• Microsoft Graph Channel.Create permissions\n\n` +
+        `🎯 **Good news:** Your AI prompt and frontend are working perfectly!\n` +
+        `The parameters were extracted correctly: team="${params.teamName}", channel="${params.channelName}", type="${params.membershipType}"`;
+
+      addMessage(msg, "bot");
+      return msg;
+    }
+    
+    const teamsData = await teamsResponse.json();
+
+    // Find team by name (case-insensitive)
+    const team = teamsData.teams.find((t) =>
+      t.displayName.toLowerCase().includes(params.teamName.toLowerCase())
+    );
+
+    if (!team) {
+      throw new Error(
+        `Team "${params.teamName}" not found. Available teams: ${teamsData.teams
+          .map((t) => t.displayName)
+          .join(", ")}`
+      );
+    }
+
+    // Create the channel
+    const response = await fetch(`${API_BASE_URL}/channels/create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        teamId: team.id,
+        displayName: params.channelName,
+        description:
+          params.description ||
+          `${params.channelName} - Created via AI Agent`,
+        membershipType: params.membershipType,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(
+        data.details || data.error || "Failed to create channel"
+      );
+    }
+
+    const msg =
+      `✅ **Channel Created Successfully!**\n\n` +
+      `📁 **Channel:** ${data.channel.displayName}\n` +
+      `🏢 **Team:** ${team.displayName}\n` +
+      `📝 **Type:** ${data.channel.membershipType}\n` +
+      `🔗 **Link:** ${data.channel.webUrl || "Available in Teams"}\n\n` +
+      `The channel is now ready for your team to use!`;
+
+    addMessage(msg, "bot");
+    return msg;
+  } catch (error) {
+    console.error("❌ Channel creation error:", error);
+    const msg = `❌ Failed to create channel: ${error.message}`;
+    addMessage(msg, "bot");
+    return msg;
+  }
+}
+
+      async function handleListTeams(params) {
+        try {
+          const response = await fetch(`${API_BASE_URL}/channels/teams`);
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.error || "Failed to get teams");
+          }
+
+          if (data.teams.length === 0) {
+            const msg = "🏢 No teams found where you can create channels.";
+            addMessage(msg, "bot");
+            return msg;
+          }
+
+          let msg = `🏢 **Available Teams for Channel Creation:**\n\n`;
+          data.teams.forEach((team, index) => {
+            msg += `${index + 1}. **${team.displayName}**\n`;
+            if (team.description) msg += `   📝 ${team.description}\n`;
+            msg += `\n`;
+          });
+
+          msg += `💡 Use "Create channel [name] in [team]" to create a new channel.`;
+
+          addMessage(msg, "bot");
+          return msg;
+        } catch (error) {
+          const msg = `❌ Failed to get teams: ${error.message}`;
+          addMessage(msg, "bot");
+          return msg;
+        }
+      }
+
       // ====================================================================
       // --- MESSAGE HANDLING ---
       // ====================================================================
@@ -662,99 +946,164 @@ Choose the most appropriate tool for the user's request:`;
 
         showLoading(true);
 
-        const action = await getAgentAction(message);
-        if (!action || !action.tool_name) {
-          addMessage("I'm not sure how to help with that.", "bot");
-          showLoading(false);
-          return;
-        }
-
-        let agentResponseText = "";
         try {
-          switch (action.tool_name) {
-            case "create_meeting":
-              agentResponseText = await handleCreateMeeting(action.parameters);
-              break;
-            case "get_meetings":
-              agentResponseText = await handleGetMeetings(action.parameters);
-              break;
-            case "join_meeting_agent":
-              agentResponseText = await handleJoinMeetingAgent(
-                action.parameters
-              );
-              break;
-            case "leave_meeting_agent":
-              agentResponseText = await handleLeaveMeetingAgent(
-                action.parameters
-              );
-              break;
-            case "cancel_meeting":
-              agentResponseText = await handleCancelMeeting(action.parameters);
-              break;
-            case "get_meeting_details":
-              agentResponseText = await handleGetMeetingDetails(
-                action.parameters
-              );
-              break;
-            case "get_meeting_summary":
-              agentResponseText = await handleGetMeetingSummary(
-                action.parameters
-              );
-              break;
-            case "get_meeting_analysis":
-              agentResponseText = await handleGetMeetingAnalysis(
-                action.parameters
-              );
-              break;
-            case "find_people":
-              agentResponseText = await handleFindPeople(action.parameters);
-              break;
-            case "get_team_members":
-              agentResponseText = await handleGetTeamMembers(action.parameters);
-              break;
-            case "send_message":
-              agentResponseText = await handleSendMessage(action.parameters);
-              break;
-            case "resolve_users":
-              agentResponseText = await handleResolveUsers(action.parameters);
-              break;
-            case "suggest_meeting_times":
-              agentResponseText = await handleSuggestMeetingTimes(
-                action.parameters
-              );
-              break;
-            case "answer_general_question":
-              agentResponseText =
-                action.parameters.responseText ||
-                "Hello! How can I help you today?";
-              if (action.parameters.includeCapabilities) {
-                agentResponseText += "\n\n" + getCapabilitiesOverview();
-              }
-              addMessage(agentResponseText, "bot");
-              // Don't return here, let it continue to update conversation history
-              break;
-            default:
-              agentResponseText = `Unknown command: ${action.tool_name}`;
-              addMessage(agentResponseText, "bot");
+          const action = await getAgentAction(message);
+          console.log("🤖 AI Action received:", action);
+
+          if (!action || !action.tool_name) {
+            addMessage(
+              "I'm not sure how to help with that. Could you please rephrase your request?",
+              "bot"
+            );
+            showLoading(false);
+            return;
+          }
+
+          // Validate action has required parameters
+          if (!action.parameters) {
+            action.parameters = {};
+          }
+
+          let agentResponseText = "";
+          try {
+            switch (action.tool_name) {
+              case "create_meeting":
+                agentResponseText = await handleCreateMeeting(
+                  action.parameters
+                );
+                break;
+              case "get_meetings":
+                agentResponseText = await handleGetMeetings(action.parameters);
+                break;
+              case "find_people":
+                agentResponseText = await handleFindPeople(action.parameters);
+                break;
+              case "get_team_members":
+                agentResponseText = await handleGetTeamMembers(
+                  action.parameters
+                );
+                break;
+              case "join_meeting_agent":
+                agentResponseText = await handleJoinMeetingAgent(
+                  action.parameters
+                );
+                break;
+              case "leave_meeting_agent":
+                agentResponseText = await handleLeaveMeetingAgent(
+                  action.parameters
+                );
+                break;
+              case "cancel_meeting":
+                agentResponseText = await handleCancelMeeting(
+                  action.parameters
+                );
+                break;
+              case "get_meeting_details":
+                agentResponseText = await handleGetMeetingDetails(
+                  action.parameters
+                );
+                break;
+              case "get_meeting_summary":
+                agentResponseText = await handleGetMeetingSummary(
+                  action.parameters
+                );
+                break;
+              case "get_meeting_analysis":
+                agentResponseText = await handleGetMeetingAnalysis(
+                  action.parameters
+                );
+                break;
+              case "send_message":
+                agentResponseText = await handleSendMessage(action.parameters);
+                break;
+              case "resolve_users":
+                agentResponseText = await handleResolveUsers(action.parameters);
+                break;
+              case "suggest_meeting_times":
+                agentResponseText = await handleSuggestMeetingTimes(
+                  action.parameters
+                );
+                break;
+              case "answer_general_question":
+                agentResponseText =
+                  action.parameters.responseText ||
+                  "Hello! How can I help you today?";
+                if (action.parameters.includeCapabilities) {
+                  agentResponseText += "\n\n" + getCapabilitiesOverview();
+                }
+                addMessage(agentResponseText, "bot");
+                break;
+              case "create_channel":
+                agentResponseText = await handleCreateChannel(
+                  action.parameters
+                );
+                break;
+              case "list_teams":
+                agentResponseText = await handleListTeams(action.parameters);
+                break;
+              case "list_channels":
+                agentResponseText = await handleListChannels(action.parameters);
+                break;
+              default:
+                agentResponseText = `I understand you want to ${action.tool_name}, but I'm not sure how to handle that yet. Please try a different request.`;
+                addMessage(agentResponseText, "bot");
+            }
+          } catch (error) {
+            console.error("Tool execution error:", error);
+            agentResponseText = `Sorry, I encountered an error while processing your request: ${error.message}`;
+            addMessage(agentResponseText, "bot");
+          }
+
+          conversationHistory.push({
+            role: "agent",
+            message: agentResponseText,
+            timestamp: Date.now(),
+            tool_used: action.tool_name,
+          });
+
+          if (conversationHistory.length > 10) {
+            conversationHistory = conversationHistory.slice(-10);
           }
         } catch (error) {
-          console.error("Tool execution error:", error);
-          agentResponseText = `Sorry, I encountered an error: ${error.message}`;
-          addMessage(agentResponseText, "bot");
+          console.error("Message handling error:", error);
+          addMessage(
+            "I'm having trouble understanding that request. Please try rephrasing it or use one of the quick action buttons.",
+            "bot"
+          );
         }
 
-        conversationHistory.push({
-          role: "agent",
-          message: agentResponseText,
-          timestamp: Date.now(),
-          tool_used: action.tool_name,
-        });
-
-        if (conversationHistory.length > 10) {
-          conversationHistory = conversationHistory.slice(-10);
-        }
         showLoading(false);
       }
+
+      async function handleListChannels(params) {
+  try {
+    const teamName = params.teamName || "Unknown Team";
+    
+    // For now, since backend isn't fully implemented, show simulated data
+    const msg = `📁 **Channels in ${teamName}:**\n\n` +
+      `1. **General**\n` +
+      `   📝 General team discussions\n` +
+      `   👥 Public channel\n\n` +
+      `2. **Announcements**\n` +
+      `   📝 Team announcements and updates\n` +
+      `   👥 Public channel\n\n` +
+      `3. **Random**\n` +
+      `   📝 Casual conversations\n` +
+      `   👥 Public channel\n\n` +
+      `⚠️ **Note:** This is simulated data. To show real channels:\n` +
+      `- Implement the backend /channels/:teamId endpoint\n` +
+      `- Configure Microsoft Graph permissions\n\n` +
+      `💡 Use "Create a channel called '[name]' in ${teamName}" to create new channels.`;
+
+    addMessage(msg, "bot");
+    return msg;
+
+  } catch (error) {
+    const msg = `❌ Failed to get channels: ${error.message}`;
+    addMessage(msg, "bot");
+    return msg;
+  }
+}
 
       // ====================================================================
       // --- TOOL IMPLEMENTATIONS ---
@@ -763,38 +1112,115 @@ Choose the most appropriate tool for the user's request:`;
       async function handleCreateMeeting(params) {
         try {
           console.log("📅 Creating meeting with params:", params);
-          
+
+          // ENHANCED VALIDATION with better defaults
+          if (!params.subject) {
+            // Try to extract subject from description or use default
+            params.subject = params.description || "Meeting";
+          }
+
+          if (!params.date) {
+            // Default to tomorrow if no date specified
+            params.date = "tomorrow";
+            console.log("⚠️ No date specified, defaulting to tomorrow");
+          }
+
+          if (!params.time) {
+            // Default to next hour if no time specified
+            const nextHour = new Date();
+            nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
+            params.time = nextHour.toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            });
+            console.log(`⚠️ No time specified, defaulting to ${params.time}`);
+          }
+
+          console.log("📅 Final params after validation:", params);
+
           // Enhanced date/time parsing
           const startTime = parseDateTime(params.date, params.time);
           console.log("🕐 Parsed start time:", startTime);
-          
+
           const endTime = new Date(
             new Date(startTime).getTime() + (params.duration || 30) * 60000
           ).toISOString();
 
-          // Use /create route instead of /create-with-names
-          const payload = {
-            subject: params.subject,
-            description:
-              params.description ||
-              `${params.subject} - Created with AI assistance`,
-            startTime,
-            endTime,
-            attendees:  ["support@legacynote.ai"], // Direct emails/names for /create route
-            autoJoinAgent: params.enableAutoInsights !== false,
-            enableChatCapture: params.enableChatCapture !== false,
+          const attendees = params.attendees || [];
+
+          // CRITICAL FIX: Detect if attendees contains names vs emails
+          const isEmail = (str) => {
+            return (
+              str.includes("@") &&
+              !str.includes(" ") &&
+              str.split("@").length === 2
+            );
           };
 
-          console.log("📤 Sending payload:", payload);
+          // Separate names from emails
+          const attendeeEmails = attendees.filter((attendee) =>
+            isEmail(attendee)
+          );
+          const attendeeNames = attendees.filter(
+            (attendee) => !isEmail(attendee)
+          );
 
-          // CHANGE THIS LINE - use /create instead of /create-with-names
-          const response = await fetch(`${API_BASE_URL}/meetings/create`, {
+          console.log("👥 Attendee analysis:", {
+            total: attendees.length,
+            emails: attendeeEmails,
+            names: attendeeNames,
+            hasNames: attendeeNames.length > 0,
+          });
+
+          let payload;
+          let endpoint;
+
+          if (attendeeNames.length > 0) {
+            // Use create-with-names endpoint for name resolution
+            console.log("🔄 Using name-based meeting creation");
+            endpoint = `${API_BASE_URL}/meetings/create-with-names`;
+            payload = {
+              subject: params.subject,
+              description:
+                params.description ||
+                `${params.subject} - Created with AI assistance`,
+              startTime,
+              endTime,
+              attendeeNames: attendeeNames,
+              attendeeEmails: attendeeEmails,
+              autoJoinAgent: params.enableAutoInsights !== false,
+              enableChatCapture: params.enableChatCapture !== false,
+            };
+          } else {
+            // Use regular create endpoint for direct emails only
+            console.log("📧 Using email-based meeting creation");
+            endpoint = `${API_BASE_URL}/meetings/create`;
+            payload = {
+              subject: params.subject,
+              description:
+                params.description ||
+                `${params.subject} - Created with AI assistance`,
+              startTime,
+              endTime,
+              attendees: attendeeEmails,
+              autoJoinAgent: params.enableAutoInsights !== false,
+              enableChatCapture: params.enableChatCapture !== false,
+            };
+          }
+
+          console.log("📤 Sending payload to:", endpoint);
+          console.log("📦 Payload:", payload);
+
+          const response = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
 
           const data = await response.json();
+          console.log("📨 Response:", data);
+
           if (!response.ok) {
             throw new Error(
               data.details || data.error || "Failed to create meeting"
@@ -814,12 +1240,28 @@ Choose the most appropriate tool for the user's request:`;
           );
           addMessage(meetingCard, "bot", "card");
 
-          return `✅ Meeting "${
+          let successMessage = `✅ Meeting "${
             params.subject
-          }" created successfully!\n🕐 Scheduled for: ${new Date(startTime).toLocaleString()}\n🤖 Auto-insights: ${
+          }" created successfully!\n🕐 Scheduled for: ${new Date(
+            startTime
+          ).toLocaleString()}\n🤖 Auto-insights: ${
             params.enableAutoInsights !== false ? "ENABLED" : "DISABLED"
-          }\n👥 Attendees: ${data.meeting.attendees?.length || 0}`;
+          }`;
+
+          if (data.userResolution && attendeeNames.length > 0) {
+            successMessage += `\n👥 Name Resolution: ${data.userResolution.usersResolved}/${data.userResolution.namesRequested} names resolved from Teams directory`;
+            successMessage += `\n📧 Final attendees: ${
+              data.meeting.attendees?.length || 0
+            } total`;
+          } else {
+            successMessage += `\n👥 Attendees: ${
+              data.meeting.attendees?.length || 0
+            }`;
+          }
+
+          return successMessage;
         } catch (error) {
+          console.error("❌ Meeting creation error:", error);
           const msg = `❌ Failed to create meeting: ${error.message}`;
           addMessage(msg, "bot");
           return msg;
@@ -828,10 +1270,17 @@ Choose the most appropriate tool for the user's request:`;
 
       async function handleGetMeetings(params) {
         try {
-          let url = `${API_BASE_URL}/meetings?limit=${params.limit || 10}`;
-          if (params.status) {
-            url += `&status=${params.status}`;
+          // Fix: Provide default values for all parameters
+          const limit = params?.limit || 10;
+          const status = params?.status || null;
+          const detailed = params?.detailed || false;
+
+          let url = `${API_BASE_URL}/meetings?limit=${limit}`;
+          if (status) {
+            url += `&status=${status}`;
           }
+
+          console.log("📋 Getting meetings with URL:", url);
 
           const response = await fetch(url);
           const data = await response.json();
@@ -840,7 +1289,7 @@ Choose the most appropriate tool for the user's request:`;
             throw new Error(data.error || "Failed to get meetings");
           }
 
-          userMeetings = data.meetings; // Cache for other operations
+          userMeetings = data.meetings || []; // Cache for other operations
 
           if (data.meetings.length === 0) {
             const msg = "📅 No meetings found. Would you like to schedule one?";
@@ -848,7 +1297,7 @@ Choose the most appropriate tool for the user's request:`;
             return msg;
           }
 
-          if (params.detailed) {
+          if (detailed) {
             // Show detailed meeting cards
             data.meetings.forEach((meeting) => {
               const card = createMeetingCard(meeting);
@@ -874,6 +1323,7 @@ Choose the most appropriate tool for the user's request:`;
             return resultMsg;
           }
         } catch (error) {
+          console.error("❌ Get meetings error:", error);
           const msg = `❌ Failed to get meetings: ${error.message}`;
           addMessage(msg, "bot");
           return msg;
@@ -1148,9 +1598,14 @@ Choose the most appropriate tool for the user's request:`;
 
       async function handleFindPeople(params) {
         try {
+          // Fix: Ensure searchTerm is properly extracted
+          const searchTerm = params.searchTerm || params.query || "John";
+
+          console.log("🔍 Searching for people with term:", searchTerm);
+
           const response = await fetch(
             `${API_BASE_URL}/users/search?q=${encodeURIComponent(
-              params.searchTerm
+              searchTerm
             )}&limit=${params.limit || 10}`
           );
           const data = await response.json();
@@ -1160,12 +1615,12 @@ Choose the most appropriate tool for the user's request:`;
           }
 
           if (data.users.length === 0) {
-            const msg = `🔍 No team members found matching "${params.searchTerm}". Try a different search term.`;
+            const msg = `🔍 No team members found matching "${searchTerm}". Try a different search term.`;
             addMessage(msg, "bot");
             return msg;
           }
 
-          let msg = `👥 **Found ${data.users.length} team member(s) for "${params.searchTerm}":**\n\n`;
+          let msg = `👥 **Found ${data.users.length} team member(s) for "${searchTerm}":**\n\n`;
           data.users.forEach((user, index) => {
             msg += `${index + 1}. **${user.name}**\n`;
             msg += `   📧 ${user.email}\n`;
@@ -1177,6 +1632,7 @@ Choose the most appropriate tool for the user's request:`;
           addMessage(msg, "bot");
           return msg;
         } catch (error) {
+          console.error("❌ Find people error:", error);
           const msg = `❌ Failed to find people: ${error.message}`;
           addMessage(msg, "bot");
           return msg;
@@ -1185,26 +1641,32 @@ Choose the most appropriate tool for the user's request:`;
 
       async function handleGetTeamMembers(params) {
         try {
-          const response = await fetch(
-            `${API_BASE_URL}/users?limit=${params.limit || 20}`
-          );
+          // Fix: Provide default values
+          const limit = params?.limit || 20;
+          const includeDetails = params?.includeDetails || true;
+
+          console.log("👥 Getting team members with limit:", limit);
+
+          const response = await fetch(`${API_BASE_URL}/users?limit=${limit}`);
           const data = await response.json();
 
           if (!response.ok) {
             throw new Error(data.error || "Failed to get team members");
           }
 
-          if (data.users.length === 0) {
+          if (!data.users || data.users.length === 0) {
             const msg = "👥 No team members found in the directory.";
             addMessage(msg, "bot");
             return msg;
           }
 
-          let msg = `👥 **Team Directory** (${data.total} total members):\n\n`;
+          let msg = `👥 **Team Directory** (${
+            data.total || data.users.length
+          } total members):\n\n`;
           data.users.slice(0, 15).forEach((user, index) => {
             msg += `${index + 1}. **${user.name}**\n`;
             msg += `   📧 ${user.email}\n`;
-            if (params.includeDetails) {
+            if (includeDetails) {
               if (user.jobTitle) msg += `   💼 ${user.jobTitle}\n`;
               if (user.department) msg += `   🏢 ${user.department}\n`;
             }
@@ -1220,6 +1682,7 @@ Choose the most appropriate tool for the user's request:`;
           addMessage(msg, "bot");
           return msg;
         } catch (error) {
+          console.error("❌ Get team members error:", error);
           const msg = `❌ Failed to get team members: ${error.message}`;
           addMessage(msg, "bot");
           return msg;
@@ -1405,15 +1868,15 @@ Choose the most appropriate tool for the user's request:`;
 
       function parseDateTime(dateStr, timeStr) {
         console.log("🕐 Parsing date/time:", { dateStr, timeStr });
-        
+
         const now = new Date();
         let meetingDate = new Date(now);
-        
+
         // ============ ENHANCED DATE PARSING ============
         if (dateStr) {
           const dateLower = dateStr.toLowerCase().trim();
           let dateResolved = false;
-          
+
           // Relative dates
           if (dateLower === "today") {
             meetingDate = new Date(now);
@@ -1427,13 +1890,18 @@ Choose the most appropriate tool for the user's request:`;
             meetingDate.setDate(now.getDate() + 7);
             dateResolved = true;
           }
-          
+
           // Weekdays
           const weekdays = {
-            'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4,
-            'friday': 5, 'saturday': 6, 'sunday': 0
+            monday: 1,
+            tuesday: 2,
+            wednesday: 3,
+            thursday: 4,
+            friday: 5,
+            saturday: 6,
+            sunday: 0,
           };
-          
+
           for (const [day, dayNum] of Object.entries(weekdays)) {
             if (dateLower.includes(day)) {
               meetingDate = getNextWeekday(now, dayNum);
@@ -1441,22 +1909,41 @@ Choose the most appropriate tool for the user's request:`;
               break;
             }
           }
-          
+
           // Month names parsing (comprehensive)
           if (!dateResolved) {
             const monthNames = {
-              'january': 0, 'jan': 0, 'february': 1, 'feb': 1, 'march': 2, 'mar': 2,
-              'april': 3, 'apr': 3, 'may': 4, 'june': 5, 'jun': 5,
-              'july': 6, 'jul': 6, 'august': 7, 'aug': 7, 'september': 8, 'sep': 8,
-              'october': 9, 'oct': 9, 'november': 10, 'nov': 10, 'december': 11, 'dec': 11
+              january: 0,
+              jan: 0,
+              february: 1,
+              feb: 1,
+              march: 2,
+              mar: 2,
+              april: 3,
+              apr: 3,
+              may: 4,
+              june: 5,
+              jun: 5,
+              july: 6,
+              jul: 6,
+              august: 7,
+              aug: 7,
+              september: 8,
+              sep: 8,
+              october: 9,
+              oct: 9,
+              november: 10,
+              nov: 10,
+              december: 11,
+              dec: 11,
             };
-            
+
             // Patterns: "15 august", "august 15", "15th august", "aug 15"
             const patterns = [
               /(\d{1,2})(?:st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i,
-              /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2})(?:st|nd|rd|th)?/i
+              /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2})(?:st|nd|rd|th)?/i,
             ];
-            
+
             for (const pattern of patterns) {
               const match = dateLower.match(pattern);
               if (match) {
@@ -1468,13 +1955,16 @@ Choose the most appropriate tool for the user's request:`;
                   day = parseInt(match[2]);
                   monthName = match[1].toLowerCase();
                 }
-                
+
                 const monthIndex = monthNames[monthName];
                 if (monthIndex !== undefined && day >= 1 && day <= 31) {
                   meetingDate = new Date(now.getFullYear(), monthIndex, day);
-                  
+
                   // If date is in the past, move to next year
-                  if (meetingDate < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+                  if (
+                    meetingDate <
+                    new Date(now.getFullYear(), now.getMonth(), now.getDate())
+                  ) {
                     meetingDate.setFullYear(now.getFullYear() + 1);
                   }
                   dateResolved = true;
@@ -1483,20 +1973,20 @@ Choose the most appropriate tool for the user's request:`;
               }
             }
           }
-          
+
           // Numeric date patterns: "15/8", "8/15", "15-8", "2025-08-15"
           if (!dateResolved) {
             const numericPatterns = [
-              /(\d{4})-(\d{1,2})-(\d{1,2})/,     // YYYY-MM-DD
-              /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/,  // DD/MM/YYYY or MM/DD/YYYY
-              /(\d{1,2})[\/\-](\d{1,2})/,       // DD/MM or MM/DD
+              /(\d{4})-(\d{1,2})-(\d{1,2})/, // YYYY-MM-DD
+              /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/, // DD/MM/YYYY or MM/DD/YYYY
+              /(\d{1,2})[\/\-](\d{1,2})/, // DD/MM or MM/DD
             ];
-            
+
             for (const pattern of numericPatterns) {
               const match = dateStr.match(pattern);
               if (match) {
                 let year, month, day;
-                
+
                 if (match[0].includes(match[1]) && match[1].length === 4) {
                   // YYYY-MM-DD format
                   year = parseInt(match[1]);
@@ -1514,7 +2004,7 @@ Choose the most appropriate tool for the user's request:`;
                   // Decide between DD/MM and MM/DD
                   const num1 = parseInt(match[1]);
                   const num2 = parseInt(match[2]);
-                  
+
                   if (num1 > 12) {
                     day = num1;
                     month = num2 - 1;
@@ -1527,10 +2017,13 @@ Choose the most appropriate tool for the user's request:`;
                     month = num2 - 1;
                   }
                 }
-                
+
                 meetingDate = new Date(year, month, day);
                 if (!isNaN(meetingDate.getTime())) {
-                  if (meetingDate < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+                  if (
+                    meetingDate <
+                    new Date(now.getFullYear(), now.getMonth(), now.getDate())
+                  ) {
                     meetingDate.setFullYear(now.getFullYear() + 1);
                   }
                   dateResolved = true;
@@ -1539,18 +2032,21 @@ Choose the most appropriate tool for the user's request:`;
               }
             }
           }
-          
+
           // Fallback: try native Date parsing
           if (!dateResolved) {
             const fallbackFormats = [
               `${dateStr} ${now.getFullYear()}`,
               `${now.getFullYear()}-${dateStr}`,
-              dateStr
+              dateStr,
             ];
-            
+
             for (const format of fallbackFormats) {
               const testDate = new Date(format);
-              if (!isNaN(testDate.getTime()) && testDate.getFullYear() >= now.getFullYear()) {
+              if (
+                !isNaN(testDate.getTime()) &&
+                testDate.getFullYear() >= now.getFullYear()
+              ) {
                 meetingDate = testDate;
                 dateResolved = true;
                 break;
@@ -1563,42 +2059,47 @@ Choose the most appropriate tool for the user's request:`;
         if (timeStr) {
           const timeLower = timeStr.toLowerCase().trim();
           console.log("🕐 Parsing time:", timeLower);
-          
+
           let hours = null;
           let minutes = 0;
-          
+
           // Comprehensive time patterns
           const timePatterns = [
             // 12-hour format with AM/PM
-            /(\d{1,2}):(\d{2})\s*(am|pm)/i,           // 2:30pm, 10:15am
-            /(\d{1,2})\s*(am|pm)/i,                   // 2pm, 10am
-            /(\d{1,2})\.(\d{2})\s*(am|pm)/i,          // 2.30pm
-            
+            /(\d{1,2}):(\d{2})\s*(am|pm)/i, // 2:30pm, 10:15am
+            /(\d{1,2})\s*(am|pm)/i, // 2pm, 10am
+            /(\d{1,2})\.(\d{2})\s*(am|pm)/i, // 2.30pm
+
             // 24-hour format
-            /(\d{1,2}):(\d{2})$/,                     // 14:30, 02:15
-            /(\d{1,2})\.(\d{2})$/,                    // 14.30, 02.15
-            /(\d{1,2})h(\d{2})/i,                     // 14h30, 2h15
-            /(\d{1,2})h$/i,                           // 14h, 2h
-            
+            /(\d{1,2}):(\d{2})$/, // 14:30, 02:15
+            /(\d{1,2})\.(\d{2})$/, // 14.30, 02.15
+            /(\d{1,2})h(\d{2})/i, // 14h30, 2h15
+            /(\d{1,2})h$/i, // 14h, 2h
+
             // Simple hour formats
-            /^(\d{1,2})$/,                            // 14, 2 (assume 24h if >12, otherwise next occurrence)
+            /^(\d{1,2})$/, // 14, 2 (assume 24h if >12, otherwise next occurrence)
           ];
-          
+
           for (const pattern of timePatterns) {
             const match = timeLower.match(pattern);
             if (match) {
               hours = parseInt(match[1], 10);
               minutes = match[2] ? parseInt(match[2], 10) : 0;
-              
+
               // Handle AM/PM conversion
               if (match[3]) {
                 const period = match[3].toLowerCase();
-                if (period === 'pm' && hours < 12) {
+                if (period === "pm" && hours < 12) {
                   hours += 12;
-                } else if (period === 'am' && hours === 12) {
+                } else if (period === "am" && hours === 12) {
                   hours = 0;
                 }
-              } else if (hours <= 12 && !timeLower.includes(':') && !timeLower.includes('.') && !timeLower.includes('h')) {
+              } else if (
+                hours <= 12 &&
+                !timeLower.includes(":") &&
+                !timeLower.includes(".") &&
+                !timeLower.includes("h")
+              ) {
                 // For simple hour format, assume PM if it's a reasonable time
                 if (hours >= 8 && hours <= 11) {
                   // Could be AM or PM, check context
@@ -1608,7 +2109,7 @@ Choose the most appropriate tool for the user's request:`;
                   }
                 }
               }
-              
+
               // Validate time
               if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
                 break;
@@ -1617,18 +2118,18 @@ Choose the most appropriate tool for the user's request:`;
               }
             }
           }
-          
+
           // Special cases for common time expressions
           if (hours === null) {
             const specialTimes = {
-              'morning': [9, 0],
-              'noon': [12, 0],
-              'afternoon': [14, 0],
-              'evening': [18, 0],
-              'night': [20, 0],
-              'midnight': [0, 0]
+              morning: [9, 0],
+              noon: [12, 0],
+              afternoon: [14, 0],
+              evening: [18, 0],
+              night: [20, 0],
+              midnight: [0, 0],
             };
-            
+
             for (const [timeWord, [h, m]] of Object.entries(specialTimes)) {
               if (timeLower.includes(timeWord)) {
                 hours = h;
@@ -1637,7 +2138,7 @@ Choose the most appropriate tool for the user's request:`;
               }
             }
           }
-          
+
           // Apply time to meeting date
           if (hours !== null) {
             meetingDate.setHours(hours, minutes, 0, 0);
@@ -1667,7 +2168,12 @@ Choose the most appropriate tool for the user's request:`;
         }
 
         const result = meetingDate.toISOString();
-        console.log("🕐 Final parsed datetime:", result, "Local:", meetingDate.toLocaleString());
+        console.log(
+          "🕐 Final parsed datetime:",
+          result,
+          "Local:",
+          meetingDate.toLocaleString()
+        );
         return result;
       }
 
@@ -1676,11 +2182,11 @@ Choose the most appropriate tool for the user's request:`;
         const result = new Date(date);
         const currentDay = result.getDay();
         let daysToAdd = targetDay - currentDay;
-        
+
         if (daysToAdd <= 0) {
           daysToAdd += 7; // Next week
         }
-        
+
         result.setDate(result.getDate() + daysToAdd);
         return result;
       }
