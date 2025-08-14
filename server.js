@@ -13,6 +13,7 @@ const logger = require('./src/utils/logger');
 const cosmosClient = require('./src/config/cosmosdb');
 const userRoutes = require('./src/routes/users'); // Add this line
 const meetingRoutes = require('./src/routes/meetings');
+const teamsAgent = require('./src/routes/teamsAgent');
 const teamsService = require('./src/services/teamsService');
 
 
@@ -44,6 +45,10 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // Static files
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Add this line with your other routes
+app.use('/api', teamsAgent);
+
 
 // Health check endpoint
 // Add this route to your main router or app
