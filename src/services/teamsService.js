@@ -18,23 +18,7 @@ class TeamsService {
 // Find team members by search term (POC Feature 1.1)
 async findTeamMembers(searchTerm) {
   if (!this.isAvailable()) {
-    // Return simulated data when Teams is not available
-    return [
-      {
-        id: `user-${Date.now()}-1`,
-        name: `${searchTerm} Smith`,
-        email: `${searchTerm.toLowerCase()}@company.com`,
-        jobTitle: "Software Engineer",
-        department: "Engineering"
-      },
-      {
-        id: `user-${Date.now()}-2`, 
-        name: `${searchTerm} Johnson`,
-        email: `${searchTerm.toLowerCase()}.johnson@company.com`,
-        jobTitle: "Product Manager",
-        department: "Product"
-      }
-    ];
+    throw new Error('Teams service not available - Azure AD configuration required');
   }
 
   try {
@@ -43,7 +27,7 @@ async findTeamMembers(searchTerm) {
     const select = `$select=id,displayName,userPrincipalName,jobTitle,department`;
     const url = `${this.graphEndpoint}/users?${filter}&${select}&$top=20`;
 
-    logger.info(`🔍 Searching for team members: ${searchTerm}`);
+    logger.info(`🔍 Searching for real Teams members: ${searchTerm}`);
     
     const response = await axios.get(url, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
@@ -59,52 +43,15 @@ async findTeamMembers(searchTerm) {
     }));
 
   } catch (error) {
-    logger.error('❌ Failed to search team members:', error);
-    throw new Error(`Team member search failed: ${error.message}`);
+    logger.error('❌ Failed to search real Teams members:', error);
+    throw new Error(`Real Teams member search failed: ${error.message}`);
   }
 }
 
 // Get all team members (POC Feature 1.1)
 async getAllTeamMembers(limit = 50) {
   if (!this.isAvailable()) {
-    // Return simulated data when Teams is not available
-    return [
-      {
-        id: "user-1",
-        name: "John Smith",
-        email: "john.smith@company.com",
-        jobTitle: "Software Engineer",
-        department: "Engineering"
-      },
-      {
-        id: "user-2",
-        name: "Sarah Johnson", 
-        email: "sarah.johnson@company.com",
-        jobTitle: "Product Manager",
-        department: "Product"
-      },
-      {
-        id: "user-3",
-        name: "Mike Wilson",
-        email: "mike.wilson@company.com",
-        jobTitle: "Design Lead",
-        department: "Design"
-      },
-      {
-        id: "user-4",
-        name: "Lisa Chen",
-        email: "lisa.chen@company.com",
-        jobTitle: "Data Scientist", 
-        department: "Analytics"
-      },
-      {
-        id: "user-5",
-        name: "David Brown",
-        email: "david.brown@company.com",
-        jobTitle: "DevOps Engineer",
-        department: "Engineering"
-      }
-    ];
+    throw new Error('Teams service not available - Azure AD configuration required');
   }
 
   try {
@@ -112,7 +59,7 @@ async getAllTeamMembers(limit = 50) {
     const select = `$select=id,displayName,userPrincipalName,jobTitle,department`;
     const url = `${this.graphEndpoint}/users?${select}&$top=${limit}`;
 
-    logger.info(`📋 Getting team members (limit: ${limit})`);
+    logger.info(`📋 Getting real Teams members (limit: ${limit})`);
     
     const response = await axios.get(url, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
@@ -128,47 +75,174 @@ async getAllTeamMembers(limit = 50) {
     }));
 
   } catch (error) {
-    logger.error('❌ Failed to get team members:', error);
-    throw new Error(`Get team members failed: ${error.message}`);
+    logger.error('❌ Failed to get real Teams members:', error);
+    throw new Error(`Get real Teams members failed: ${error.message}`);
+  }
+}
+
+async getAllCalendarMeetings(startDate = null, endDate = null, limit = 100) {
+  if (!this.isAvailable()) {
+    throw new Error('Teams service not available - Azure AD configuration required');
+  }
+
+  try {
+    const accessToken = await authService.getAppOnlyToken();
+    const organizerEmail = process.env.MEETING_ORGANIZER_EMAIL || 'support@legacynote.ai';
+    
+    // Get organizer user ID
+    const userResponse = await axios.get(
+      `${this.graphEndpoint}/users/${encodeURIComponent(organizerEmail)}?$select=id`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+    
+    const organizerUserId = userResponse.data.id;
+    
+    // Set date range (default: last 30 days to next 30 days)
+    if (!startDate) {
+      startDate = moment().subtract(30, 'days').startOf('day').toISOString();
+    }
+    if (!endDate) {
+      endDate = moment().add(30, 'days').endOf('day').toISOString();
+    }
+    
+    logger.info(`📅 Getting ALL calendar meetings for ${organizerEmail}`, {
+      startDate, endDate, limit
+    });
+    
+    // Get ALL calendar events (not just AI-created ones)
+    const response = await axios.get(
+      `${this.graphEndpoint}/users/${organizerUserId}/calendar/calendarView`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        params: {
+          startDateTime: startDate,
+          endDateTime: endDate,
+          $select: 'id,subject,start,end,attendees,organizer,onlineMeeting,webLink,createdDateTime,lastModifiedDateTime,isOnlineMeeting',
+          $orderby: 'start/dateTime desc',
+          $top: limit
+        }
+      }
+    );
+
+    const events = response.data.value || [];
+    
+    logger.info(`✅ Found ${events.length} calendar meetings from Teams`);
+    
+    // Convert Teams calendar events to our meeting format
+    const meetings = events.map(event => ({
+      id: event.id, // Use Teams event ID
+      meetingId: event.id,
+      graphEventId: event.id,
+      subject: event.subject,
+      startTime: event.start.dateTime,
+      endTime: event.end.dateTime,
+      attendees: event.attendees?.map(a => a.emailAddress.address) || [],
+      organizer: event.organizer?.emailAddress?.address || organizerEmail,
+      joinUrl: event.onlineMeeting?.joinUrl || null,
+      webUrl: event.webLink,
+      status: moment(event.start.dateTime).isBefore(moment()) ? 
+               (moment(event.end.dateTime).isBefore(moment()) ? 'completed' : 'in_progress') : 
+               'scheduled',
+      isRealTeamsMeeting: true,
+      isFromTeamsCalendar: true, // Flag to indicate this came from Teams calendar directly
+      createdAt: event.createdDateTime,
+      updatedAt: event.lastModifiedDateTime || event.createdDateTime,
+      agentAttended: false, // Default for calendar meetings
+      agentConfig: {
+        autoJoin: false,
+        enableChatCapture: false,
+        generateSummary: false
+      }
+    }));
+
+    return meetings;
+
+  } catch (error) {
+    logger.error('❌ Failed to get ALL calendar meetings:', {
+      error: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText
+    });
+    
+    if (error.response?.status === 403) {
+      throw new Error(`Permission denied: Cannot access Teams calendar. Check app permissions.`);
+    } else if (error.response?.status === 404) {
+      throw new Error(`User not found: ${organizerEmail} does not exist in your organization`);
+    } else {
+      throw new Error(`Teams calendar lookup failed: ${error.message}`);
+    }
   }
 }
 
   // Build recurrence pattern for recurring meetings
-  buildRecurrencePattern(recurrence) {
-    if (!recurrence || !recurrence.frequency) {
-      return null;
-    }
-
-    const pattern = {
-      type: recurrence.frequency, // "daily", "weekly", "monthly"
-      interval: recurrence.interval || 1,
-    };
-
-    if (recurrence.frequency === 'weekly' && recurrence.daysOfWeek) {
-      pattern.daysOfWeek = recurrence.daysOfWeek;
-    }
-
-    const range = {
-      type: recurrence.rangeType || 'endDate',
-      startDate: moment(recurrence.startDate).format('YYYY-MM-DD'),
-    };
-
-    if (range.type === 'endDate' && recurrence.endDate) {
-      range.endDate = moment(recurrence.endDate).format('YYYY-MM-DD');
-    } else if (range.type === 'numbered' && recurrence.occurrences) {
-      range.numberOfOccurrences = recurrence.occurrences;
-    } else {
-      range.type = 'endDate';
-      range.endDate = moment(recurrence.startDate).add(1, 'year').format('YYYY-MM-DD');
-    }
-
-    return { pattern, range };
+buildRecurrencePattern(recurrence) {
+  console.log('🔄 buildRecurrencePattern called with:', JSON.stringify(recurrence, null, 2));
+  
+  if (!recurrence || !recurrence.pattern || !recurrence.pattern.type) {
+    console.log('❌ No valid recurrence pattern provided');
+    return null;
   }
+
+  try {
+    const pattern = recurrence.pattern;
+    const range = recurrence.range || {};
+
+    console.log('📋 Building recurrence pattern:', {
+      type: pattern.type,
+      interval: pattern.interval,
+      rangeType: range.type
+    });
+
+    // Build Microsoft Graph recurrence object
+    const graphRecurrence = {
+      pattern: {
+        type: pattern.type, // daily, weekly, monthly, yearly
+        interval: pattern.interval || 1
+      },
+      range: {
+        type: range.type || 'noEnd',
+        startDate: range.startDate || new Date().toISOString().split('T')[0]
+      }
+    };
+
+    // Add days of week for weekly recurrence
+    if (pattern.type === 'weekly' && pattern.daysOfWeek && pattern.daysOfWeek.length > 0) {
+      console.log('📅 Adding weekly days:', pattern.daysOfWeek);
+      graphRecurrence.pattern.daysOfWeek = pattern.daysOfWeek;
+    }
+
+    // Add end conditions
+    if (range.type === 'endDate' && range.endDate) {
+      console.log('📅 Adding end date:', range.endDate);
+      graphRecurrence.range.endDate = range.endDate;
+    } else if (range.type === 'numbered' && range.numberOfOccurrences) {
+      console.log('📅 Adding occurrence count:', range.numberOfOccurrences);
+      graphRecurrence.range.numberOfOccurrences = range.numberOfOccurrences;
+    }
+
+    console.log('✅ Built Microsoft Graph recurrence:', JSON.stringify(graphRecurrence, null, 2));
+    return graphRecurrence;
+
+  } catch (error) {
+    console.error('❌ Error building recurrence pattern:', error);
+    return null;
+  }
+}
 
   // Create Teams meeting (POC Core Feature 1.1)
 
 
 // Replace your createTeamsMeeting method with this version that has better error handling:
+
+
+
+
+
+
+
 
 // Enhanced version that adds organizer info to meeting subject and body
 
@@ -180,6 +254,15 @@ async createTeamsMeeting(meetingData) {
   try {
     const accessToken = await authService.getAppOnlyToken();
     const { subject, startTime, endTime, attendees = [], recurrence, description } = meetingData;
+
+    console.log('🔄 createTeamsMeeting called with:', {
+      subject,
+      startTime,
+      endTime,
+      attendeesCount: attendees.length,
+      hasRecurrence: !!recurrence,
+      recurrenceData: recurrence
+    });
 
     // Use the specific organizer email from environment variable
     const organizerEmail = process.env.MEETING_ORGANIZER_EMAIL || 'support@legacynote.ai';
@@ -199,7 +282,7 @@ async createTeamsMeeting(meetingData) {
     const organizerUserId = userResponse.data.id;
     const organizerName = userResponse.data.displayName;
     
-    logger.info(` Found organizer: ${organizerName} (${organizerEmail}) - ID: ${organizerUserId}`);
+    logger.info(`✅ Found organizer: ${organizerName} (${organizerEmail}) - ID: ${organizerUserId}`);
 
     // Enhanced event details with clearer organizer info
     const eventDetails = {
@@ -229,11 +312,22 @@ async createTeamsMeeting(meetingData) {
       sensitivity: "normal"
     };
 
-    // Add recurrence pattern if provided
-    const recurrencePattern = this.buildRecurrencePattern(recurrence);
-    if (recurrencePattern) {
-      eventDetails.recurrence = recurrencePattern;
-      logger.info('🔄 Creating recurring meeting');
+    // 🔧 CRITICAL FIX: Add recurrence pattern if provided
+    console.log('🔄 Checking for recurrence pattern...');
+    if (recurrence) {
+      console.log('🔄 Recurrence data provided, building pattern...');
+      const recurrencePattern = this.buildRecurrencePattern(recurrence);
+      
+      if (recurrencePattern) {
+        console.log('✅ Adding recurrence to event details:', JSON.stringify(recurrencePattern, null, 2));
+        eventDetails.recurrence = recurrencePattern;
+        logger.info('🔄 Creating recurring meeting with pattern:', recurrencePattern.pattern.type);
+      } else {
+        console.warn('⚠️ buildRecurrencePattern returned null - creating single meeting');
+        logger.warn('⚠️ Recurrence pattern could not be built, creating single meeting instead');
+      }
+    } else {
+      console.log('📅 No recurrence data provided, creating single meeting');
     }
 
     // Prepare attendees list (don't include organizer - they're automatic)
@@ -248,6 +342,8 @@ async createTeamsMeeting(meetingData) {
         type: 'required'
       }));
     }
+
+    console.log('📤 Final event details being sent to Microsoft Graph:', JSON.stringify(eventDetails, null, 2));
 
     // Create the meeting using the specific organizer's calendar
     logger.info(`🔄 Creating Teams meeting on ${organizerName}'s calendar`);
@@ -266,13 +362,32 @@ async createTeamsMeeting(meetingData) {
 
     const eventData = response.data;
     
+    console.log('📨 Microsoft Graph response:', {
+      id: eventData.id,
+      subject: eventData.subject,
+      recurrence: eventData.recurrence,
+      hasRecurrence: !!eventData.recurrence,
+      seriesMasterId: eventData.seriesMasterId
+    });
+    
     logger.info('✅ Teams meeting created successfully', {
       meetingId: eventData.id,
       subject: eventData.subject,
       organizer: `${organizerName} (${organizerEmail})`,
       organizerInResponse: eventData.organizer?.emailAddress?.address,
-      attendeesCount: inviteeAttendees.length
+      attendeesCount: inviteeAttendees.length,
+      isRecurring: !!eventData.recurrence,
+      recurrenceType: eventData.recurrence?.pattern?.type || 'none'
     });
+
+    const isActuallyRecurring = !!eventData.recurrence;
+    
+    if (recurrence && !isActuallyRecurring) {
+      console.warn('⚠️ WARNING: Recurrence was requested but Microsoft Graph did not create recurring event!');
+      console.warn('🔧 Check recurrence object format and Microsoft Graph API permissions');
+      console.warn('📋 Requested recurrence:', JSON.stringify(recurrence, null, 2));
+      console.warn('📋 Built pattern:', JSON.stringify(eventDetails.recurrence, null, 2));
+    }
 
     return {
       success: true,
@@ -284,12 +399,22 @@ async createTeamsMeeting(meetingData) {
       webUrl: eventData.webLink,
       graphEventId: eventData.id,
       isReal: true,
-      isRecurring: !!eventData.recurrence,
+      isRecurring: isActuallyRecurring, // 🔧 CRITICAL: Return actual recurrence status
+      recurrence: eventData.recurrence || null,
+      seriesMasterId: eventData.seriesMasterId || null,
       organizer: {
         name: organizerName,
         email: organizerEmail,
         userId: organizerUserId,
         confirmedInResponse: eventData.organizer?.emailAddress?.address === organizerEmail
+      },
+      // Debug info
+      debug: {
+        recurrenceRequested: !!recurrence,
+        recurrenceBuilt: !!eventDetails.recurrence,
+        recurrenceReturned: !!eventData.recurrence,
+        requestedPattern: recurrence?.pattern?.type || 'none',
+        returnedPattern: eventData.recurrence?.pattern?.type || 'none'
       }
     };
 
@@ -312,12 +437,197 @@ async createTeamsMeeting(meetingData) {
     } else if (error.response?.status === 404) {
       throw new Error(`User not found: ${organizerEmail} does not exist or is not accessible`);
     } else if (error.response?.status === 400) {
-      throw new Error(`Bad request: ${error.response?.data?.error?.message || 'Invalid meeting data'}`);
+      // Check if it's a recurrence-related error
+      const errorMessage = error.response?.data?.error?.message || 'Invalid meeting data';
+      if (errorMessage.toLowerCase().includes('recurrence')) {
+        throw new Error(`Recurrence error: ${errorMessage}. Check recurrence pattern format.`);
+      }
+      throw new Error(`Bad request: ${errorMessage}`);
     } else {
       throw new Error(`Teams meeting creation failed: ${error.message}`);
     }
   }
 }
+
+
+
+async updateTeamsMeeting(graphEventId, updateData) {
+  if (!this.isAvailable()) {
+    throw new Error('Teams service not available - check Azure AD configuration');
+  }
+
+  try {
+    const accessToken = await authService.getAppOnlyToken();
+    
+    // Get organizer email and user ID
+    const organizerEmail = process.env.MEETING_ORGANIZER_EMAIL || 'support@legacynote.ai';
+    
+    const userResponse = await axios.get(
+      `${this.graphEndpoint}/users/${encodeURIComponent(organizerEmail)}?$select=id`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+    
+    if (!userResponse.data || !userResponse.data.id) {
+      throw new Error(`Organizer ${organizerEmail} not found in tenant`);
+    }
+    
+    const organizerUserId = userResponse.data.id;
+    
+    logger.info(`🔄 Updating Teams meeting: ${graphEventId}`, {
+      organizer: organizerEmail,
+      updateData: Object.keys(updateData)
+    });
+
+    // Prepare update payload
+    const updatePayload = {};
+
+    // Handle attendees update
+    if (updateData.attendees) {
+      // Filter out organizer from attendees list
+      const filteredAttendees = updateData.attendees.filter(email => email !== organizerEmail);
+      
+      updatePayload.attendees = filteredAttendees.map(email => ({
+        emailAddress: { 
+          address: email, 
+          name: email.split('@')[0]
+        },
+        type: 'required'
+      }));
+      
+      logger.info(`📝 Updating attendees: ${filteredAttendees.length} attendees`);
+    }
+
+    // Handle other updates (subject, description, time, etc.)
+    if (updateData.subject) {
+      updatePayload.subject = updateData.subject;
+    }
+    
+    if (updateData.description) {
+      updatePayload.body = {
+        contentType: "html",
+        content: updateData.description
+      };
+    }
+    
+    if (updateData.startTime) {
+      updatePayload.start = {
+        dateTime: updateData.startTime,
+        timeZone: "UTC"
+      };
+    }
+    
+    if (updateData.endTime) {
+      updatePayload.end = {
+        dateTime: updateData.endTime,
+        timeZone: "UTC"
+      };
+    }
+
+    // Update the meeting via Microsoft Graph API
+    const response = await axios.patch(
+      `${this.graphEndpoint}/users/${organizerUserId}/events/${graphEventId}`,
+      updatePayload,
+      { 
+        headers: { 
+          'Authorization': `Bearer ${accessToken}`, 
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        } 
+      }
+    );
+
+    const updatedEvent = response.data;
+    
+    logger.info('✅ Teams meeting updated successfully', {
+      meetingId: updatedEvent.id,
+      subject: updatedEvent.subject,
+      attendeesCount: updatedEvent.attendees?.length || 0
+    });
+
+    return {
+      success: true,
+      meetingId: updatedEvent.id,
+      subject: updatedEvent.subject,
+      startTime: updatedEvent.start?.dateTime,
+      endTime: updatedEvent.end?.dateTime,
+      attendees: updatedEvent.attendees?.map(a => a.emailAddress.address) || [],
+      webUrl: updatedEvent.webLink,
+      joinUrl: updatedEvent.onlineMeeting?.joinUrl,
+      lastModified: updatedEvent.lastModifiedDateTime,
+      organizer: {
+        email: organizerEmail,
+        userId: organizerUserId
+      }
+    };
+
+  } catch (error) {
+    const errorInfo = {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data
+    };
+    
+    logger.error('❌ Failed to update Teams meeting:', errorInfo);
+    
+    if (error.response?.status === 403) {
+      throw new Error(`Permission denied: Check if your app has Calendars.ReadWrite permission`);
+    } else if (error.response?.status === 404) {
+      throw new Error(`Meeting not found: ${graphEventId} does not exist or is not accessible`);
+    } else if (error.response?.status === 400) {
+      throw new Error(`Bad request: ${error.response?.data?.error?.message || 'Invalid update data'}`);
+    } else {
+      throw new Error(`Teams meeting update failed: ${error.message}`);
+    }
+  }
+}
+
+async getTeamsMeetingDetails(graphEventId) {
+  if (!this.isAvailable()) {
+    throw new Error('Teams service not available - check Azure AD configuration');
+  }
+
+  try {
+    const accessToken = await authService.getAppOnlyToken();
+    const organizerEmail = process.env.MEETING_ORGANIZER_EMAIL || 'support@legacynote.ai';
+    
+    const userResponse = await axios.get(
+      `${this.graphEndpoint}/users/${encodeURIComponent(organizerEmail)}?$select=id`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+    
+    const organizerUserId = userResponse.data.id;
+    
+    const response = await axios.get(
+      `${this.graphEndpoint}/users/${organizerUserId}/events/${graphEventId}`,
+      { 
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+        params: {
+          $select: 'id,subject,start,end,attendees,organizer,onlineMeeting,webLink,lastModifiedDateTime'
+        }
+      }
+    );
+
+    const meeting = response.data;
+    
+    return {
+      id: meeting.id,
+      subject: meeting.subject,
+      startTime: meeting.start?.dateTime,
+      endTime: meeting.end?.dateTime,
+      attendees: meeting.attendees?.map(a => a.emailAddress.address) || [],
+      organizer: meeting.organizer?.emailAddress?.address,
+      joinUrl: meeting.onlineMeeting?.joinUrl,
+      webUrl: meeting.webLink,
+      lastModified: meeting.lastModifiedDateTime
+    };
+
+  } catch (error) {
+    logger.error('❌ Failed to get Teams meeting details:', error);
+    throw new Error(`Get meeting details failed: ${error.message}`);
+  }
+}
+
 
 // Add these methods to your teamsService.js file
 
@@ -862,34 +1172,54 @@ async validateTeamsUsers(attendeeEmails) {
   }
 
   // Get available meeting times (POC Feature 1.1)
-  async findMeetingTimes(attendees, duration = 30) {
-    if (!this.isAvailable()) {
-      throw new Error('Teams service not available for finding meeting times');
-    }
+async findMeetingTimes(attendees, duration = 30, searchDays = 7, timePreferences = {}) {
+  if (!this.isAvailable()) {
+    throw new Error('Teams service not available - Azure AD configuration required for real Teams integration');
+  }
 
-    try {
-      const accessToken = await authService.getAppOnlyToken();
-      
-      const findMeetingTimesRequest = {
-        attendees: attendees.map(email => ({
-          emailAddress: { address: email, name: email.split('@')[0] }
-        })),
-        meetingDuration: `PT${duration}M`,
-        maxCandidates: 10,
-        timeConstraint: {
-          timeslots: [{
-            start: {
-              dateTime: moment().add(1, 'hour').toISOString(),
-              timeZone: 'UTC'
-            },
-            end: {
-              dateTime: moment().add(7, 'days').toISOString(),
-              timeZone: 'UTC'
-            }
-          }]
+  try {
+    const accessToken = await authService.getAppOnlyToken();
+    
+    // Strategy 1: Use Microsoft Graph findMeetingTimes API
+    const startTime = moment().add(1, 'hour').startOf('hour');
+    const endTime = moment().add(searchDays, 'days').endOf('day');
+    
+    const findMeetingTimesRequest = {
+      attendees: attendees.map(email => ({
+        emailAddress: { 
+          address: email, 
+          name: email.split('@')[0] 
         }
-      };
+      })),
+      timeConstraint: {
+        timeslots: [{
+          start: {
+            dateTime: startTime.toISOString(),
+            timeZone: 'UTC'
+          },
+          end: {
+            dateTime: endTime.toISOString(),
+            timeZone: 'UTC'
+          }
+        }]
+      },
+      meetingDuration: `PT${duration}M`,
+      maxCandidates: 20,
+      isOrganizerOptional: false,
+      returnSuggestionReasons: true,
+      minimumAttendeePercentage: timePreferences.minimumAttendeePercentage || 100
+    };
 
+    logger.info(`🔍 Finding optimal meeting times for ${attendees.length} attendees`, {
+      duration: duration,
+      searchPeriod: `${searchDays} days`,
+      attendees: attendees
+    });
+
+    let suggestions = [];
+    
+    try {
+      // Try Microsoft Graph findMeetingTimes API first
       const response = await axios.post(
         `${this.graphEndpoint}/me/calendar/getSchedule`,
         findMeetingTimesRequest,
@@ -901,14 +1231,198 @@ async validateTeamsUsers(attendeeEmails) {
         }
       );
 
-      logger.info('✅ Retrieved meeting time suggestions');
-      return response.data.meetingTimeSuggestions || [];
-
-    } catch (error) {
-      logger.error('❌ Failed to get meeting times:', error);
-      throw new Error(`Finding meeting times failed: ${error.message}`);
+      if (response.data.meetingTimeSuggestions) {
+        suggestions = response.data.meetingTimeSuggestions.map(suggestion => ({
+          start: suggestion.meetingTimeSlot.start.dateTime,
+          end: suggestion.meetingTimeSlot.end.dateTime,
+          confidence: this.mapConfidenceScore(suggestion.confidence),
+          attendeeAvailability: suggestion.attendeeAvailability || [],
+          locations: suggestion.locations || [],
+          suggestionReason: suggestion.suggestionReason,
+          organizerAvailability: suggestion.organizerAvailability,
+          source: 'microsoft_graph_api',
+          score: this.calculateSuggestionScore(suggestion)
+        }));
+        
+        logger.info(`✅ Microsoft Graph API returned ${suggestions.length} suggestions`);
+      }
+    } catch (graphError) {
+      logger.warn('Microsoft Graph findMeetingTimes failed, falling back to manual analysis:', graphError.message);
     }
+
+    // Strategy 2: Manual availability analysis if Graph API fails or returns few results
+    if (suggestions.length < 5) {
+      logger.info('🔍 Performing manual availability analysis for better results');
+      
+      const manualSuggestions = await this.findAvailableTimeSlots(attendees, duration, searchDays);
+      
+      // Convert manual suggestions to unified format
+      const formattedManualSuggestions = manualSuggestions.map(slot => ({
+        start: slot.start,
+        end: slot.end,
+        confidence: slot.confidence || 'high',
+        attendeeAvailability: slot.attendeeAvailability || [],
+        source: 'manual_analysis',
+        dayOfWeek: slot.dayOfWeek,
+        timeOfDay: slot.timeOfDay,
+        score: this.calculateManualScore(slot, timePreferences),
+        allAttendeesAvailable: slot.allAttendeesAvailable
+      }));
+
+      suggestions = [...suggestions, ...formattedManualSuggestions];
+    }
+
+    // Strategy 3: Smart time preferences (business hours, common patterns)
+    suggestions = this.enhanceWithSmartPreferences(suggestions, timePreferences);
+
+    // Sort by score (best suggestions first)
+    suggestions.sort((a, b) => b.score - a.score);
+
+    // Limit results and add metadata
+    const finalSuggestions = suggestions.slice(0, 10).map((suggestion, index) => ({
+      ...suggestion,
+      rank: index + 1,
+      recommendationReason: this.getRecommendationReason(suggestion, timePreferences),
+      businessHoursMatch: this.isBusinessHours(suggestion.start),
+      timeZoneOptimal: this.isOptimalTimeZone(suggestion.start, attendees)
+    }));
+
+    logger.info(`🎯 Returning ${finalSuggestions.length} optimized time suggestions`);
+
+    return {
+      suggestions: finalSuggestions,
+      searchCriteria: {
+        attendees: attendees.length,
+        duration: duration,
+        searchDays: searchDays,
+        timePreferences: timePreferences
+      },
+      metadata: {
+        totalCandidatesAnalyzed: suggestions.length,
+        dataSource: finalSuggestions.length > 0 ? finalSuggestions[0].source : 'none',
+        searchCompletedAt: new Date().toISOString()
+      }
+    };
+
+  } catch (error) {
+    logger.error('❌ Failed to find meeting times:', error);
+    throw new Error(`Finding optimal meeting times failed: ${error.message}`);
   }
+}
+
+// Helper methods for time suggestions
+mapConfidenceScore(confidence) {
+  const confidenceMap = {
+    'high': 'high',
+    'medium': 'medium', 
+    'low': 'low'
+  };
+  return confidenceMap[confidence?.toLowerCase()] || 'medium';
+}
+
+calculateSuggestionScore(suggestion) {
+  let score = 50; // Base score
+  
+  // Higher score for higher confidence
+  if (suggestion.confidence === 'high') score += 30;
+  else if (suggestion.confidence === 'medium') score += 15;
+  
+  // Prefer business hours (9 AM - 5 PM)
+  const hour = new Date(suggestion.meetingTimeSlot.start.dateTime).getHours();
+  if (hour >= 9 && hour <= 17) score += 20;
+  
+  // Prefer weekdays
+  const dayOfWeek = new Date(suggestion.meetingTimeSlot.start.dateTime).getDay();
+  if (dayOfWeek >= 1 && dayOfWeek <= 5) score += 15;
+  
+  // Prefer times when more attendees are available
+  if (suggestion.attendeeAvailability) {
+    const availableCount = suggestion.attendeeAvailability.filter(a => a.availability === 'free').length;
+    const total = suggestion.attendeeAvailability.length;
+    score += (availableCount / total) * 20;
+  }
+  
+  return score;
+}
+
+calculateManualScore(slot, preferences) {
+  let score = 60; // Base score for manual analysis
+  
+  // All attendees available gets high score
+  if (slot.allAttendeesAvailable) score += 25;
+  
+  // Business hours preference
+  const hour = new Date(slot.start).getHours();
+  if (hour >= 9 && hour <= 17) score += 15;
+  
+  // Weekday preference
+  const dayOfWeek = new Date(slot.start).getDay();
+  if (dayOfWeek >= 1 && dayOfWeek <= 5) score += 10;
+  
+  // Time preferences
+  if (preferences.preferredHours) {
+    if (preferences.preferredHours.includes(hour)) score += 20;
+  }
+  
+  return score;
+}
+
+enhanceWithSmartPreferences(suggestions, preferences) {
+  return suggestions.map(suggestion => {
+    const startTime = new Date(suggestion.start);
+    const hour = startTime.getHours();
+    const dayOfWeek = startTime.getDay();
+    
+    // Add smart scoring based on common meeting patterns
+    let smartScore = suggestion.score || 50;
+    
+    // Common good meeting times
+    if (hour === 10 || hour === 14) smartScore += 10; // 10 AM or 2 PM
+    if (hour >= 9 && hour <= 11) smartScore += 5; // Morning meetings
+    if (dayOfWeek === 2 || dayOfWeek === 3 || dayOfWeek === 4) smartScore += 5; // Tue, Wed, Thu
+    
+    // Avoid common bad times
+    if (hour === 12) smartScore -= 10; // Lunch time
+    if (hour >= 17) smartScore -= 15; // After hours
+    if (dayOfWeek === 1 && hour <= 10) smartScore -= 10; // Monday morning
+    if (dayOfWeek === 5 && hour >= 15) smartScore -= 10; // Friday afternoon
+    
+    return {
+      ...suggestion,
+      score: smartScore
+    };
+  });
+}
+
+getRecommendationReason(suggestion, preferences) {
+  const reasons = [];
+  
+  if (suggestion.confidence === 'high') reasons.push('High confidence match');
+  if (suggestion.allAttendeesAvailable) reasons.push('All attendees available');
+  if (suggestion.businessHoursMatch) reasons.push('Business hours');
+  
+  const hour = new Date(suggestion.start).getHours();
+  if (hour === 10) reasons.push('Optimal morning time');
+  if (hour === 14) reasons.push('Good afternoon time');
+  
+  const dayOfWeek = new Date(suggestion.start).getDay();
+  if ([2, 3, 4].includes(dayOfWeek)) reasons.push('Mid-week timing');
+  
+  return reasons.length > 0 ? reasons.join(', ') : 'Available time slot';
+}
+
+isBusinessHours(dateTime) {
+  const hour = new Date(dateTime).getHours();
+  const dayOfWeek = new Date(dateTime).getDay();
+  return hour >= 9 && hour <= 17 && dayOfWeek >= 1 && dayOfWeek <= 5;
+}
+
+isOptimalTimeZone(dateTime, attendees) {
+  // Simple timezone optimization - can be enhanced based on attendee locations
+  const hour = new Date(dateTime).getHours();
+  return hour >= 9 && hour <= 16; // Good for most time zones
+}
+
 
 
   // Create Teams Channel (New Feature)
@@ -981,37 +1495,19 @@ async createTeamsChannel(channelData) {
 // Get Teams/Groups that user can create channels in
 async getAvailableTeams() {
   if (!this.isAvailable()) {
-    console.log("⚠️ Teams service not available, returning mock data");
-    return [
-      {
-        id: "team-1",
-        displayName: "Engineering Team",
-        description: "Software development team"
-      },
-      {
-        id: "team-2", 
-        displayName: "Product Team",
-        description: "Product management team"
-      }
-    ];
+    throw new Error('Teams service not available - Azure AD configuration required');
   }
 
   try {
     const accessToken = await authService.getAppOnlyToken();
-    console.log("✅ Got access token, length:", accessToken.length);
     
-    logger.info('📋 Getting available teams for channel creation');
+    logger.info('📋 Getting available real Teams for channel creation');
     
-    // Try the simpler groups endpoint first
     const url = `${this.graphEndpoint}/groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&$select=id,displayName,description&$top=10`;
-    console.log("🔍 Calling URL:", url);
     
     const response = await axios.get(url, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
-
-    console.log("✅ Graph API response status:", response.status);
-    console.log("✅ Groups found:", response.data.value?.length || 0);
 
     const teams = response.data.value || [];
     const result = teams.map(team => ({
@@ -1020,19 +1516,12 @@ async getAvailableTeams() {
       description: team.description || 'No description'
     }));
 
-    console.log("✅ Processed teams:", result.length);
+    logger.info(`✅ Found ${result.length} real Teams`);
     return result;
 
   } catch (error) {
-    console.error('❌ getAvailableTeams error details:', {
-      message: error.message,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      errorData: error.response?.data
-    });
-    
-    logger.error('❌ Failed to get available teams:', error);
-    throw new Error(`Get teams failed: ${error.message}`);
+    logger.error('❌ Failed to get real Teams:', error);
+    throw new Error(`Get real Teams failed: ${error.message}`);
   }
 }
 
@@ -1042,21 +1531,14 @@ async getAvailableTeams() {
 // List channels in a team
 async getTeamChannels(teamId) {
   if (!this.isAvailable()) {
-    return [
-      {
-        id: "channel-1",
-        displayName: "General",
-        description: "General discussion"
-      }
-    ];
+    throw new Error('Teams service not available - Azure AD configuration required');
   }
 
   try {
     const accessToken = await authService.getAppOnlyToken();
     
-    // FIX: The URL was wrong - it had /teams/teams/ instead of /teams/{teamId}/
     const response = await axios.get(
-      `${this.graphEndpoint}/teams/${teamId}/channels`, // CORRECTED URL
+      `${this.graphEndpoint}/teams/${teamId}/channels`,
       { headers: { 'Authorization': `Bearer ${accessToken}` } }
     );
 
@@ -1070,8 +1552,8 @@ async getTeamChannels(teamId) {
     }));
 
   } catch (error) {
-    logger.error('❌ Failed to get team channels:', error);
-    throw new Error(`Get channels failed: ${error.message}`);
+    logger.error('❌ Failed to get real Teams channels:', error);
+    throw new Error(`Get real Teams channels failed: ${error.message}`);
   }
 }
 
