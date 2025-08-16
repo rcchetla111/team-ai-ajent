@@ -319,6 +319,503 @@ async createTeamsMeeting(meetingData) {
   }
 }
 
+// Add these methods to your teamsService.js file
+
+// Get free/busy information for team members
+// Add these methods to your teamsService.js file
+
+// Get free/busy information for team members
+async getFreeBusyInfo(attendeeEmails, startTime, endTime) {
+  if (!this.isAvailable()) {
+    // Return simulated free/busy data when Teams is not available
+    return attendeeEmails.map(email => ({
+      email: email,
+      freeBusyStatus: Math.random() > 0.5 ? 'free' : 'busy',
+      busyTimes: Math.random() > 0.5 ? [] : [{
+        start: moment(startTime).add(30, 'minutes').toISOString(),
+        end: moment(startTime).add(90, 'minutes').toISOString()
+      }]
+    }));
+  }
+
+  try {
+    const accessToken = await authService.getAppOnlyToken();
+    
+    // FIXED: Use correct endpoint and request format
+    const scheduleRequest = {
+      schedules: attendeeEmails,
+      startTime: {
+        dateTime: startTime,
+        timeZone: "UTC"
+      },
+      endTime: {
+        dateTime: endTime,
+        timeZone: "UTC"
+      },
+      availabilityViewInterval: 60 // Optional: view interval in minutes
+    };
+
+    logger.info(`🔍 Checking availability for ${attendeeEmails.length} attendees`, {
+      attendees: attendeeEmails,
+      timeSlot: `${startTime} to ${endTime}`
+    });
+
+    // FIXED: Use the correct endpoint - /calendar/getSchedule (not /me/calendar/getSchedule)
+    const response = await axios.post(
+      `${this.graphEndpoint}/calendar/getSchedule`,
+      scheduleRequest,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    const schedules = response.data.value || [];
+    
+    return schedules.map((schedule, index) => {
+      const email = attendeeEmails[index];
+      const busyTimes = schedule.busyTimes || [];
+      
+      return {
+        email: email,
+        freeBusyStatus: busyTimes.length === 0 ? 'free' : 'busy',
+        busyTimes: busyTimes.map(busyTime => ({
+          start: busyTime.start.dateTime,
+          end: busyTime.end.dateTime
+        })),
+        workingHours: schedule.workingHours || null,
+        availabilityView: schedule.availabilityView || null
+      };
+    });
+
+  } catch (error) {
+    logger.error('❌ Failed to get free/busy information:', {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data
+    });
+    
+    // If it's a permission or authentication error, throw specific message
+    if (error.response?.status === 403) {
+      throw new Error(`Permission denied: Check if your app has Calendars.Read permission`);
+    } else if (error.response?.status === 401) {
+      throw new Error(`Authentication failed: Check your access token`);
+    } else if (error.response?.status === 400) {
+      throw new Error(`Bad request: ${error.response?.data?.error?.message || 'Invalid request format'}`);
+    } else {
+      throw new Error(`Free/busy lookup failed: ${error.message}`);
+    }
+  }
+}
+
+// Add these methods to your teamsService.js file
+
+// Get free/busy information for team members (REAL TEAMS ONLY)
+async getFreeBusyInfo(attendeeEmails, startTime, endTime) {
+  if (!this.isAvailable()) {
+    throw new Error('Teams service not available - Azure AD configuration required for real Teams integration');
+  }
+
+  try {
+    const accessToken = await authService.getAppOnlyToken();
+    
+    // FIXED: Use correct endpoint and request format
+    const scheduleRequest = {
+      schedules: attendeeEmails,
+      startTime: {
+        dateTime: startTime,
+        timeZone: "UTC"
+      },
+      endTime: {
+        dateTime: endTime,
+        timeZone: "UTC"
+      },
+      availabilityViewInterval: 60 // Optional: view interval in minutes
+    };
+
+    logger.info(`🔍 Checking REAL Teams calendar availability for ${attendeeEmails.length} attendees`, {
+      attendees: attendeeEmails,
+      timeSlot: `${startTime} to ${endTime}`
+    });
+
+    // FIXED: Use the correct endpoint - /calendar/getSchedule (not /me/calendar/getSchedule)
+    const response = await axios.post(
+      `${this.graphEndpoint}/calendar/getSchedule`,
+      scheduleRequest,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    const schedules = response.data.value || [];
+    
+    return schedules.map((schedule, index) => {
+      const email = attendeeEmails[index];
+      const busyTimes = schedule.busyTimes || [];
+      
+      return {
+        email: email,
+        freeBusyStatus: busyTimes.length === 0 ? 'free' : 'busy',
+        busyTimes: busyTimes.map(busyTime => ({
+          start: busyTime.start.dateTime,
+          end: busyTime.end.dateTime
+        })),
+        workingHours: schedule.workingHours || null,
+        availabilityView: schedule.availabilityView || null
+      };
+    });
+
+  } catch (error) {
+    logger.error('❌ Failed to get REAL Teams free/busy information:', {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data
+    });
+    
+    // If it's a permission or authentication error, throw specific message
+    if (error.response?.status === 403) {
+      throw new Error(`Permission denied: Check if your app has Calendars.Read permission for real Teams calendars`);
+    } else if (error.response?.status === 401) {
+      throw new Error(`Authentication failed: Check your Azure AD access token`);
+    } else if (error.response?.status === 400) {
+      throw new Error(`Bad request: ${error.response?.data?.error?.message || 'Invalid request format for Teams calendar API'}`);
+    } else {
+      throw new Error(`Real Teams calendar lookup failed: ${error.message}`);
+    }
+  }
+}
+
+// Get real calendar events for a specific Teams user (FIXED - proper time filtering)
+async getUserCalendarEvents(userEmail, startTime, endTime) {
+  if (!this.isAvailable()) {
+    throw new Error('Teams service not available - Azure AD configuration required');
+  }
+
+  try {
+    const accessToken = await authService.getAppOnlyToken();
+    
+    // FIXED: Proper date formatting for Microsoft Graph API
+    const startDate = moment(startTime).utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+    const endDate = moment(endTime).utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+    
+    logger.info(`📅 Getting REAL calendar events for Teams user: ${userEmail}`, {
+      timeRange: `${startDate} to ${endDate}`,
+      duration: moment(endTime).diff(moment(startTime), 'hours', true) + ' hours'
+    });
+    
+    // FIXED: Use calendarView endpoint with proper time filtering
+    const response = await axios.get(
+      `${this.graphEndpoint}/users/${encodeURIComponent(userEmail)}/calendar/calendarView`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        params: {
+          startDateTime: startDate,
+          endDateTime: endDate,
+          $select: 'subject,start,end,showAs,organizer,sensitivity,isAllDay',
+          $orderby: 'start/dateTime',
+          $top: 100 // Limit to prevent too much data
+        }
+      }
+    );
+
+    const events = response.data.value || [];
+    
+    // FIXED: Filter events that actually overlap with the requested time range
+    const requestStart = moment(startTime).utc();
+    const requestEnd = moment(endTime).utc();
+    
+    const overlappingEvents = events.filter(event => {
+      const eventStart = moment(event.start.dateTime).utc();
+      const eventEnd = moment(event.end.dateTime).utc();
+      
+      // Check if event overlaps with requested time range
+      return eventStart.isBefore(requestEnd) && eventEnd.isAfter(requestStart);
+    });
+    
+    // FIXED: Only consider events that make the user "busy"
+    const busyEvents = overlappingEvents.filter(event => 
+      event.showAs === 'busy' || 
+      event.showAs === 'tentative' || 
+      event.showAs === 'outOfOffice' ||
+      event.showAs === 'workingElsewhere'
+    );
+
+    const isBusy = busyEvents.length > 0;
+
+    logger.info(`✅ Calendar check for ${userEmail}:`, {
+      totalEventsInRange: overlappingEvents.length,
+      busyEvents: busyEvents.length,
+      status: isBusy ? 'BUSY' : 'FREE',
+      timeRange: `${startDate} to ${endDate}`
+    });
+
+    return {
+      email: userEmail,
+      timeRange: {
+        start: startTime,
+        end: endTime,
+        durationHours: moment(endTime).diff(moment(startTime), 'hours', true)
+      },
+      events: overlappingEvents.map(event => ({
+        subject: event.subject,
+        start: event.start.dateTime,
+        end: event.end.dateTime,
+        showAs: event.showAs,
+        isAllDay: event.isAllDay || false,
+        organizer: event.organizer?.emailAddress?.address
+      })),
+      freeBusyStatus: isBusy ? 'busy' : 'free',
+      busyTimes: busyEvents.map(event => ({
+        start: event.start.dateTime,
+        end: event.end.dateTime,
+        subject: event.subject,
+        showAs: event.showAs
+      })),
+      summary: {
+        totalEventsInTimeRange: overlappingEvents.length,
+        busyEventsCount: busyEvents.length,
+        freeEventsCount: overlappingEvents.length - busyEvents.length,
+        isAvailable: !isBusy
+      }
+    };
+
+  } catch (error) {
+    logger.error('❌ Failed to get REAL Teams user calendar events:', {
+      userEmail,
+      error: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      timeRange: `${startTime} to ${endTime}`
+    });
+    
+    if (error.response?.status === 403) {
+      throw new Error(`Permission denied: Cannot access real Teams calendar for ${userEmail}. Check app permissions.`);
+    } else if (error.response?.status === 404) {
+      throw new Error(`Teams user not found: ${userEmail} does not exist in your organization`);
+    } else if (error.response?.status === 400) {
+      throw new Error(`Bad request for ${userEmail}: ${error.response?.data?.error?.message || 'Invalid time range or parameters'}`);
+    } else {
+      throw new Error(`Real Teams calendar lookup failed for ${userEmail}: ${error.message}`);
+    }
+  }
+}
+
+// FIXED: Check if specific time slot is available for all REAL Teams attendees
+async checkTimeSlotAvailability(attendeeEmails, startTime, endTime) {
+  if (!this.isAvailable()) {
+    throw new Error('Teams service not available - Azure AD configuration required for real Teams integration');
+  }
+
+  const attendeeStatus = [];
+  let allAvailable = true;
+
+  // Validate time range
+  const start = moment(startTime);
+  const end = moment(endTime);
+  const durationMinutes = end.diff(start, 'minutes');
+  
+  if (durationMinutes <= 0) {
+    throw new Error('End time must be after start time');
+  }
+  
+  if (durationMinutes > 1440) { // More than 24 hours
+    throw new Error('Time range cannot exceed 24 hours');
+  }
+
+  logger.info(`🔍 Checking REAL Teams availability for ${attendeeEmails.length} users`, {
+    timeSlot: `${startTime} to ${endTime}`,
+    durationMinutes: durationMinutes
+  });
+
+  for (const email of attendeeEmails) {
+    try {
+      const userCalendar = await this.getUserCalendarEvents(email, startTime, endTime);
+      
+      const isAvailable = userCalendar.freeBusyStatus === 'free';
+      attendeeStatus.push({
+        email: email,
+        available: isAvailable,
+        status: userCalendar.freeBusyStatus,
+        conflicts: userCalendar.busyTimes || [],
+        eventsInTimeRange: userCalendar.summary.totalEventsInTimeRange,
+        busyEventsCount: userCalendar.summary.busyEventsCount,
+        details: userCalendar.summary
+      });
+      
+      if (!isAvailable) {
+        allAvailable = false;
+      }
+
+      logger.info(`📊 ${email}: ${userCalendar.freeBusyStatus.toUpperCase()} (${userCalendar.summary.busyEventsCount} busy events in range)`);
+    } catch (error) {
+      logger.error(`❌ Could not check REAL Teams availability for ${email}:`, error.message);
+      attendeeStatus.push({
+        email: email,
+        available: false,
+        status: 'error',
+        conflicts: [],
+        error: error.message,
+        eventsInTimeRange: 0,
+        busyEventsCount: 0
+      });
+      allAvailable = false;
+    }
+  }
+
+  const result = {
+    timeSlot: { 
+      start: startTime, 
+      end: endTime,
+      durationMinutes: durationMinutes,
+      durationHours: Math.round(durationMinutes / 60 * 100) / 100
+    },
+    allAvailable: allAvailable,
+    attendeeStatus: attendeeStatus,
+    checkedAt: new Date().toISOString(),
+    dataSource: 'real_teams_calendars',
+    summary: {
+      totalAttendees: attendeeEmails.length,
+      availableAttendees: attendeeStatus.filter(a => a.available).length,
+      busyAttendees: attendeeStatus.filter(a => !a.available && a.status !== 'error').length,
+      errorAttendees: attendeeStatus.filter(a => a.status === 'error').length
+    }
+  };
+
+  logger.info(`🏁 Availability check complete:`, {
+    allAvailable: allAvailable,
+    available: result.summary.availableAttendees,
+    busy: result.summary.busyAttendees,
+    errors: result.summary.errorAttendees
+  });
+
+  return result;
+}
+
+// Find available time slots for multiple REAL Teams attendees  
+async findAvailableTimeSlots(attendeeEmails, duration = 30, searchDays = 7) {
+  if (!this.isAvailable()) {
+    throw new Error('Teams service not available - Azure AD configuration required for real Teams integration');
+  }
+
+  try {
+    const slots = [];
+    const startSearch = moment().add(1, 'hour');
+    const endSearch = moment().add(searchDays, 'days');
+    
+    logger.info(`🔍 Finding REAL Teams available slots for ${attendeeEmails.length} users over ${searchDays} days`);
+    
+    // Generate time slots to check (every 30 minutes during business hours)
+    const current = moment(startSearch);
+    let slotsChecked = 0;
+    
+    while (current.isBefore(endSearch) && slots.length < 10) {
+      // Only check business hours (9 AM to 5 PM, Monday to Friday)
+      if (current.day() >= 1 && current.day() <= 5 && // Monday to Friday
+          current.hour() >= 9 && current.hour() < 17) { // 9 AM to 5 PM
+        
+        const slotStart = current.clone();
+        const slotEnd = current.clone().add(duration, 'minutes');
+        
+        // Don't check slots that end after business hours
+        if (slotEnd.hour() <= 17) {
+          try {
+            slotsChecked++;
+            const availability = await this.checkTimeSlotAvailability(
+              attendeeEmails, 
+              slotStart.toISOString(), 
+              slotEnd.toISOString()
+            );
+            
+            if (availability.allAvailable) {
+              slots.push({
+                start: slotStart.toISOString(),
+                end: slotEnd.toISOString(),
+                confidence: 'high',
+                allAttendeesAvailable: true,
+                attendeeAvailability: availability.attendeeStatus,
+                dayOfWeek: slotStart.format('dddd'),
+                timeOfDay: slotStart.format('h:mm A')
+              });
+              
+              logger.info(`✅ Found available slot: ${slotStart.format('dddd, MMMM Do YYYY, h:mm A')}`);
+            }
+          } catch (error) {
+            logger.warn(`Failed to check REAL Teams slot ${slotStart.format()}:`, error.message);
+          }
+        }
+      }
+      
+      current.add(30, 'minutes');
+    }
+
+    logger.info(`🔍 Checked ${slotsChecked} time slots, found ${slots.length} available slots`);
+
+    return slots;
+
+  } catch (error) {
+    logger.error('❌ Failed to find REAL Teams available time slots:', error);
+    throw new Error(`Finding real Teams available slots failed: ${error.message}`);
+  }
+}
+
+// Validate that all attendees are real Teams users
+async validateTeamsUsers(attendeeEmails) {
+  if (!this.isAvailable()) {
+    throw new Error('Teams service not available - Azure AD configuration required');
+  }
+
+  const validUsers = [];
+  const invalidUsers = [];
+
+  for (const email of attendeeEmails) {
+    try {
+      const accessToken = await authService.getAppOnlyToken();
+      
+      const response = await axios.get(
+        `${this.graphEndpoint}/users/${encodeURIComponent(email)}?$select=id,displayName,userPrincipalName,mail`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      );
+
+      if (response.data && response.data.id) {
+        validUsers.push({
+          email: email,
+          displayName: response.data.displayName,
+          userPrincipalName: response.data.userPrincipalName,
+          exists: true
+        });
+        logger.info(`✅ Validated Teams user: ${response.data.displayName} (${email})`);
+      }
+    } catch (error) {
+      invalidUsers.push({
+        email: email,
+        exists: false,
+        error: error.response?.status === 404 ? 'User not found in Teams organization' : error.message
+      });
+      logger.warn(`❌ Invalid Teams user: ${email} - ${error.message}`);
+    }
+  }
+
+  return {
+    validUsers,
+    invalidUsers,
+    allValid: invalidUsers.length === 0,
+    summary: `${validUsers.length}/${attendeeEmails.length} users are valid Teams members`
+  };
+}
+
+
+
+
   // Find users by display names (POC Feature 1.1)
   async findUsersByDisplayName(displayNames) {
     if (!this.isAvailable()) {
@@ -479,6 +976,8 @@ async createTeamsChannel(channelData) {
   }
 }
 
+
+
 // Get Teams/Groups that user can create channels in
 async getAvailableTeams() {
   if (!this.isAvailable()) {
@@ -536,6 +1035,9 @@ async getAvailableTeams() {
     throw new Error(`Get teams failed: ${error.message}`);
   }
 }
+
+
+
 
 // List channels in a team
 async getTeamChannels(teamId) {
