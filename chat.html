@@ -1582,183 +1582,243 @@ Analyze the message and respond with appropriate tool and parameters:`;
 
       // REPLACE your handleSuggestMeetingTimes function with this FIXED version:
 
-      async function handleSuggestMeetingTimes(params) {
-        try {
-          console.log("🔍 handleSuggestMeetingTimes called with:", params);
+// COMPLETELY REPLACE your handleSuggestMeetingTimes function with this FINAL FIXED version:
 
-          if (!params.attendees || params.attendees.length === 0) {
-            const msg =
-              "❌ At least one attendee is required for time suggestions";
-            addMessage(msg, "bot");
-            return msg;
-          }
+function parseISO(isoString) {
+  const [datePart, timePart] = isoString.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const timeClean = timePart.replace(/\.\d+Z$/, 'Z'); // Remove milliseconds if causing issues
+  const [hour, minute, second] = timeClean.slice(0, -1).split(':').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  return date;
+}
 
-          // Show loading message
-          addMessage(
-            "🔍 Analyzing calendars and finding optimal meeting times...",
-            "bot"
-          );
 
-          const payload = {
-            attendees: params.attendees,
-            duration: params.duration || 30,
-            searchDays: params.searchDays || 7,
-            timePreferences: {
-              preferredDays: params.preferredDays,
-              preferredHours: params.preferredHours,
-              minimumAttendeePercentage:
-                params.minimumAttendeePercentage || 100,
-            },
-          };
 
-          console.log("📤 Sending API request:", payload);
+async function handleSuggestMeetingTimes(params) {
+  console.log("🔍 Entering handleSuggestMeetingTimes with params:", params); // Very first log
 
-          const response = await fetch(
-            `${API_BASE_URL}/meetings/suggest-times`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            }
-          );
+  try {
+    if (!params.attendees || params.attendees.length === 0) {
+      const msg = "❌ At least one attendee is required for time suggestions";
+      addMessage(msg, "bot");
+      console.log("❌ Exiting due to invalid attendees:", msg);
+      return msg;
+    }
 
-          console.log("📨 API Response status:", response.status, response.ok);
+    addMessage("🔍 Analyzing calendars and finding optimal meeting times...", "bot");
+    console.log("✅ Starting API request process");
 
-          const data = await response.json();
-          console.log(
-            "📨 COMPLETE API Response data:",
-            JSON.stringify(data, null, 2)
-          );
+    // Payload adjusted for today with fallback to next days
+    const now = new Date().toISOString().split('.')[0] + "Z"; // e.g., 2025-08-17T07:09:00Z (12:39 PM IST)
+    const payload = {
+      attendees: params.attendees,
+      duration: params.duration || 30,
+      searchDays: params.searchDays || 7,
+      timePreferences: {
+        preferredDays: [new Date().toISOString().split('T')[0]],
+        preferredHours: { start: now.split('T')[1], end: "23:59" },
+        minimumAttendeePercentage: params.minimumAttendeePercentage || 100,
+      },
+    };
 
-          if (!response.ok) {
-            throw new Error(
-              data.details || data.error || "Failed to get time suggestions"
-            );
-          }
+    console.log("📤 Sending API request with payload:", payload);
 
-          // PARSE YOUR EXACT API RESPONSE STRUCTURE
-          let suggestions = [];
-          let searchCriteria = {};
-          let metadata = {};
+    const response = await fetch(`${API_BASE_URL}/meetings/suggest-times`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-          console.log("🔍 Parsing response structure...");
-          console.log("🔍 data.success:", data.success);
-          console.log("🔍 data.suggestions type:", typeof data.suggestions);
+    console.log("📨 API Response status:", response.status, response.ok);
 
-          // YOUR BACKEND RETURNS: { success: true, suggestions: { suggestions: [...], searchCriteria: {...}, metadata: {...} } }
-          if (data.success && data.suggestions) {
-            console.log("✅ Found data.suggestions");
-            console.log(
-              "🔍 data.suggestions keys:",
-              Object.keys(data.suggestions)
-            );
+    const data = await response.json();
+    console.log("📨 COMPLETE API Response data:", JSON.stringify(data, null, 2));
 
-            if (
-              data.suggestions.suggestions &&
-              Array.isArray(data.suggestions.suggestions)
-            ) {
-              suggestions = data.suggestions.suggestions;
-              console.log(
-                "✅ Found suggestions array with",
-                suggestions.length,
-                "items"
-              );
-              console.log("🔍 First suggestion:", suggestions[0]);
-            } else {
-              console.log(
-                "❌ data.suggestions.suggestions not found or not array"
-              );
-              console.log("🔍 data.suggestions structure:", data.suggestions);
-            }
+    if (!response.ok) {
+      throw new Error(data.details || data.error || "Failed to get time suggestions");
+    }
 
-            searchCriteria = data.suggestions.searchCriteria || {
-              attendees: params.attendees.length,
-              duration: params.duration || 30,
-              searchDays: params.searchDays || 7,
-            };
+    const suggestions = data.suggestions || [];
+    console.log("✅ Suggestions array:", JSON.stringify(suggestions, null, 2));
 
-            metadata = data.suggestions.metadata || {
-              dataSource: "calendar_analysis",
-            };
-          } else {
-            console.log("❌ data.success or data.suggestions not found");
-            console.log("🔍 Full data keys:", Object.keys(data));
-          }
+    const searchCriteria = data.searchCriteria || {};
+    const metadata = data.metadata || {};
+    const nameResolution = data.nameResolution || {};
 
-          console.log("🎯 Final parsed data:");
-          console.log("   Suggestions:", suggestions.length);
-          console.log("   Search criteria:", searchCriteria);
+    console.log("✅ Parsed response components:");
+    console.log("   - Suggestions length:", suggestions.length);
+    console.log("   - Search criteria:", searchCriteria);
+    console.log("   - Name resolution:", nameResolution);
 
-          if (!suggestions || suggestions.length === 0) {
-            const msg = `❌ **No Available Time Slots Found**\n\n**Debug Info:**\n• API Status: ${
-              response.status
-            }\n• Success: ${data.success}\n• Suggestions Count: ${
-              data.suggestions?.suggestions?.length || 0
-            }\n• Response keys: ${Object.keys(data).join(
-              ", "
-            )}\n\n**Try:**\n• Different attendees\n• Longer search period\n• Shorter duration`;
-            addMessage(msg, "bot");
-            return msg;
-          }
+    if (!suggestions || suggestions.length === 0) {
+      let msg = `❌ **No Available Time Slots Found**\n\n`;
+      msg += `**Search Parameters:**\n`;
+      msg += `• Duration: ${searchCriteria.duration || 30} minutes\n`;
+      msg += `• Search Days: ${searchCriteria.searchDays || 7} days\n`;
+      msg += `• Attendees: ${searchCriteria.attendees || 0}\n`;
+      msg += `• Time Range: From ${now.split('T')[1]} to 23:59\n\n`;
+      msg += `**API Response:** Suggestions array is empty or undefined.\n`;
+      msg += `**Try:**\n`;
+      msg += `• Different date: "suggest times for tomorrow"\n`;
+      msg += `• Shorter duration: add "for 15 minutes"\n`;
+      addMessage(msg, "bot");
+      console.log("❌ Exiting due to empty suggestions:", msg);
+      return msg;
+    }
 
-          // CREATE SUCCESS MESSAGE WITH BOTH HTML CARD AND TEXT
-          const htmlCard = createWorkingTimeSuggestionsHTML(
-            suggestions,
-            searchCriteria,
-            metadata
-          );
-          addMessage(htmlCard, "bot", "html");
+    // Print raw start and end dates from API
+    let msg = "🎯 **Raw Start and End Dates from API:**\n\n";
+    suggestions.forEach((suggestion, index) => {
+      if (suggestion && suggestion.start && suggestion.end) {
+        msg += `**${index + 1}.**\n`;
+        msg += `   Start: ${suggestion.start}\n`;
+        msg += `   End: ${suggestion.end}\n\n`;
+      } else {
+        console.error("❌ Invalid suggestion at index", index, ":", suggestion);
+        msg += `**${index + 1}.**\n`;
+        msg += `   Start: [Missing]\n`;
+        msg += `   End: [Missing]\n\n`;
+      }
+    });
 
-          // Also create text summary
-          let msg = `🎯 **SUCCESS! Found ${suggestions.length} Optimal Meeting Times**\n\n`;
+    console.log("✅ Printed raw start and end dates:", msg);
+    addMessage(msg, "bot");
 
-          suggestions.slice(0, 3).forEach((suggestion, index) => {
-            const startTime = new Date(suggestion.start);
-            const endTime = new Date(suggestion.end);
-            const dayName = startTime.toLocaleDateString("en-US", {
-              weekday: "long",
-            });
-            const dateStr = startTime.toLocaleDateString();
-            const timeStr = `${startTime.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })} - ${endTime.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}`;
+    return msg;
 
-            msg += `**${index + 1}. ${dayName}, ${dateStr}**\n`;
-            msg += `   ⏰ ${timeStr}\n`;
-            msg += `   📊 ${
-              suggestion.recommendationReason || "Available slot"
-            }\n`;
-            msg += `   🎯 Score: ${suggestion.score || "High"}\n\n`;
-          });
+  } catch (error) {
+    console.error("❌ handleSuggestMeetingTimes ERROR:", error);
+    const msg = `❌ **Meeting Time Suggestion Failed**\n\n**Error:** ${error.message}`;
+    addMessage(msg, "bot");
+    return msg;
+  }
+}
 
-          if (suggestions.length > 3) {
-            msg += `... and ${
-              suggestions.length - 3
-            } more excellent options!\n\n`;
-          }
+// Placeholder functions
+function createTimeSuggestionsHTML() {
+  return "";
+}
 
-          msg += `💡 **To Schedule:** Tell me "Schedule meeting [date] at [time] with these attendees"`;
+function scheduleFirstSuggestion() {
+  const message = "Schedule meeting for the first suggested time slot";
+  handleUserMessage(message);
+}
 
-          console.log(
-            "✅ SUCCESS - Returning response with",
-            suggestions.length,
-            "suggestions"
-          );
+// Test function to trigger manually (if needed)
+function testFunction() {
+  handleSuggestMeetingTimes({ attendees: ["rohit"], duration: 30 });
+}
 
-          addMessage(msg, "bot");
-          return msg;
-        } catch (error) {
-          console.error("❌ handleSuggestMeetingTimes ERROR:", error);
-          const msg = `❌ **Meeting Time Suggestion Failed**\n\nError: ${error.message}`;
-          addMessage(msg, "bot");
-          return msg;
-        }
+
+
+function createBulletproofTimeSuggestionsHTML(suggestions, searchCriteria, metadata, nameResolution) {
+  const topSuggestions = suggestions.slice(0, 5);
+  
+  let html = `
+    <div style="border: 2px solid #10b981; border-radius: 12px; padding: 16px; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); margin: 8px 0; max-width: 500px;">
+      <div style="display: flex; align-items: center; margin-bottom: 12px;">
+        <span style="font-size: 24px; margin-right: 8px;">🎯</span>
+        <h3 style="margin: 0; color: #059669; font-weight: bold;">Found ${suggestions.length} Optimal Meeting Times!</h3>
+      </div>
+      
+      <div style="background: white; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 14px;">`;
+
+  // Show name resolution info if available
+  if (nameResolution && nameResolution.originalAttendees) {
+    html += `
+          <div><strong>👤 Original:</strong> ${nameResolution.originalAttendees.join(", ")}</div>
+          <div><strong>📧 Resolved:</strong> ${nameResolution.resolvedAttendees?.join(", ") || "None"}</div>`;
+  } else {
+    html += `
+          <div><strong>👥 Attendees:</strong> ${searchCriteria?.attendees || 'Unknown'}</div>
+          <div><strong>⏱️ Duration:</strong> ${searchCriteria?.duration || 30} minutes</div>`;
+  }
+
+  html += `
+          <div><strong>📅 Search Period:</strong> ${searchCriteria?.searchDays || 7} days</div>
+          <div><strong>🔍 Data Source:</strong> ${metadata?.dataSource || "Teams Calendar"}</div>
+        </div>
+      </div>
+      
+      <h4 style="color: #059669; margin: 12px 0 8px 0;">🏆 Top Recommendations:</h4>
+      <div style="background: white; border-radius: 8px; padding: 12px;">`;
+  
+  // Process suggestions with BULLETPROOF error handling
+  let successfullyProcessed = 0;
+  topSuggestions.forEach((suggestion, index) => {
+    try {
+      const startTime = new Date(suggestion.start);
+      const endTime = new Date(suggestion.end);
+      
+      // Triple-check date validity
+      if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+        console.error("❌ Skipping invalid date in HTML:", suggestion);
+        return;
       }
 
+      const dayName = startTime.toLocaleDateString('en-US', { weekday: 'short' });
+      const dateStr = startTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const timeStr = `${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${endTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      
+      let availabilityInfo = '';
+      if (suggestion.attendeeAvailability && suggestion.attendeeAvailability.length > 0) {
+        const availableCount = suggestion.attendeeAvailability.filter(a => a.available).length;
+        const totalCount = suggestion.attendeeAvailability.length;
+        availabilityInfo = ` (${availableCount}/${totalCount} free)`;
+      }
+      
+      const isLast = successfullyProcessed === topSuggestions.length - 1;
+      html += `
+        <div style="padding: 8px; border-bottom: 1px solid #e5e7eb; ${isLast ? 'border-bottom: none;' : ''}">
+          <div style="font-weight: bold; color: #1f2937;">${successfullyProcessed + 1}. ${dayName} ${dateStr}</div>
+          <div style="color: #6b7280; font-size: 14px;">⏰ ${timeStr} - ${suggestion.confidence || 'High'}${availabilityInfo}</div>
+          <div style="color: #059669; font-size: 12px;">📊 ${suggestion.recommendationReason || 'Available slot'}</div>
+        </div>`;
+      
+      successfullyProcessed++;
+    } catch (dateError) {
+      console.error("❌ Error processing suggestion for HTML:", suggestion, dateError);
+    }
+  });
+  
+  if (successfullyProcessed === 0) {
+    html += `<div style="text-align: center; color: #ef4444; padding: 16px;">❌ No valid time suggestions could be displayed due to date formatting issues</div>`;
+  }
+  
+  html += `
+      </div>
+      
+      <div style="margin-top: 12px; text-align: center;">
+        <button onclick="scheduleFirstValidSuggestion()" style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; margin: 4px; font-size: 12px;">
+          📅 Schedule First Option
+        </button>
+        <button onclick="showAllValidSuggestions()" style="background: #6b7280; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; margin: 4px; font-size: 12px;">
+          📋 Show All ${successfullyProcessed} Valid Options
+        </button>
+      </div>
+      
+      <div style="margin-top: 8px; font-size: 12px; color: #6b7280; text-align: center;">
+        ✅ Processed ${successfullyProcessed} valid suggestions from ${suggestions.length} total
+      </div>
+    </div>`;
+  
+  return html;
+}
+
+// Helper functions (unchanged)
+function scheduleFirstValidSuggestion() {
+  const message = "Schedule meeting for the first suggested time slot";
+  handleUserMessage(message);
+}
+
+function showAllValidSuggestions() {
+  const message = "Show me all the suggested meeting times with details";
+  handleUserMessage(message);
+}
+ 
+     
       // 3. ADD NEW HANDLER FUNCTIONS - Add these to your HTML file
 
       async function handleCancelAllMeetings(params) {
@@ -3442,6 +3502,8 @@ async function getMeetingAttendeesForRemoval(meetingIdentifier) {
 
         throw new Error(errorMessage);
       }
+      
+      
       async function handleJoinMeetingAgent(params) {
         try {
           const meeting = await findMeetingByIdentifier(
@@ -4339,77 +4401,106 @@ async function getMeetingAttendeesForRemoval(meetingIdentifier) {
         );
       }
 
-     function createWorkingTimeSuggestionsHTML(suggestions, searchCriteria, metadata) {
-  const topSuggestions = suggestions.slice(0, 5);
+// function createFixedTimeSuggestionsHTML(suggestions, searchCriteria, metadata, nameResolution) {
+//   const topSuggestions = suggestions.slice(0, 5);
   
-  let html = `
-    <div style="border: 2px solid #10b981; border-radius: 12px; padding: 16px; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); margin: 8px 0; max-width: 500px;">
-      <div style="display: flex; align-items: center; margin-bottom: 12px;">
-        <span style="font-size: 24px; margin-right: 8px;">🎯</span>
-        <h3 style="margin: 0; color: #059669; font-weight: bold;">Found ${suggestions.length} Optimal Meeting Times!</h3>
-      </div>
+//   let html = `
+//     <div style="border: 2px solid #10b981; border-radius: 12px; padding: 16px; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); margin: 8px 0; max-width: 500px;">
+//       <div style="display: flex; align-items: center; margin-bottom: 12px;">
+//         <span style="font-size: 24px; margin-right: 8px;">🎯</span>
+//         <h3 style="margin: 0; color: #059669; font-weight: bold;">Found ${suggestions.length} Optimal Meeting Times!</h3>
+//       </div>
       
-      <div style="background: white; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 14px;">
-          <div><strong>👥 Attendees:</strong> ${searchCriteria?.attendees || 'Unknown'}</div>
-          <div><strong>⏱️ Duration:</strong> ${searchCriteria?.duration || 30} minutes</div>
-          <div><strong>📅 Search Period:</strong> ${searchCriteria?.searchDays || 7} days</div>
-          <div><strong>🔍 Data Source:</strong> Real Teams Calendar</div>
-        </div>
-      </div>
+//       <div style="background: white; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+//         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 14px;">`;
+
+//   // Show name resolution info if available
+//   if (nameResolution && nameResolution.originalAttendees) {
+//     html += `
+//           <div><strong>👤 Original:</strong> ${nameResolution.originalAttendees.join(", ")}</div>
+//           <div><strong>📧 Resolved:</strong> ${nameResolution.resolvedAttendees?.join(", ") || "None"}</div>`;
+//   } else {
+//     html += `
+//           <div><strong>👥 Attendees:</strong> ${searchCriteria?.attendees || 'Unknown'}</div>
+//           <div><strong>⏱️ Duration:</strong> ${searchCriteria?.duration || 30} minutes</div>`;
+//   }
+
+//   html += `
+//           <div><strong>📅 Search Period:</strong> ${searchCriteria?.searchDays || 7} days</div>
+//           <div><strong>🔍 Data Source:</strong> Real Teams Calendar</div>
+//         </div>
+//       </div>
       
-      <h4 style="color: #059669; margin: 12px 0 8px 0;">🏆 Top Recommendations:</h4>
-      <div style="background: white; border-radius: 8px; padding: 12px;">`;
+//       <h4 style="color: #059669; margin: 12px 0 8px 0;">🏆 Top Recommendations:</h4>
+//       <div style="background: white; border-radius: 8px; padding: 12px;">`;
   
-  topSuggestions.forEach((suggestion, index) => {
-    const startTime = new Date(suggestion.start);
-    const endTime = new Date(suggestion.end);
-    const dayName = startTime.toLocaleDateString('en-US', { weekday: 'short' });
-    const dateStr = startTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const timeStr = `${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${endTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-    
-    let availabilityInfo = '';
-    if (suggestion.attendeeAvailability && suggestion.attendeeAvailability.length > 0) {
-      const availableCount = suggestion.attendeeAvailability.filter(a => a.available).length;
-      const totalCount = suggestion.attendeeAvailability.length;
-      availabilityInfo = ` (${availableCount}/${totalCount} free)`;
-    }
-    
-    html += `
-      <div style="padding: 8px; border-bottom: 1px solid #e5e7eb; ${index === topSuggestions.length - 1 ? 'border-bottom: none;' : ''}">
-        <div style="font-weight: bold; color: #1f2937;">${index + 1}. ${dayName} ${dateStr}</div>
-        <div style="color: #6b7280; font-size: 14px;">⏰ ${timeStr} - ${suggestion.confidence || 'High'}${availabilityInfo}</div>
-        <div style="color: #059669; font-size: 12px;">📊 ${suggestion.recommendationReason || 'Available slot'}</div>
-      </div>`;
-  });
-  
-  html += `
-      </div>
+//   // 🔧 FIXED: Process suggestions with proper error handling
+//   let validSuggestions = 0;
+//   topSuggestions.forEach((suggestion, index) => {
+//     try {
+//       const startTime = new Date(suggestion.start);
+//       const endTime = new Date(suggestion.end);
       
-      <div style="margin-top: 12px; text-align: center;">
-        <button onclick="scheduleFirstSuggestion()" style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; margin: 4px; font-size: 12px;">
-          📅 Schedule First Option
-        </button>
-        <button onclick="showAllSuggestions()" style="background: #6b7280; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; margin: 4px; font-size: 12px;">
-          📋 Show All ${suggestions.length} Options
-        </button>
-      </div>
-    </div>`;
+//       // Validate dates before processing
+//       if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+//         console.error("❌ Skipping invalid date in suggestion:", suggestion);
+//         return; // Skip this suggestion
+//       }
+
+//       const dayName = startTime.toLocaleDateString('en-US', { weekday: 'short' });
+//       const dateStr = startTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+//       const timeStr = `${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${endTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      
+//       let availabilityInfo = '';
+//       if (suggestion.attendeeAvailability && suggestion.attendeeAvailability.length > 0) {
+//         const availableCount = suggestion.attendeeAvailability.filter(a => a.available).length;
+//         const totalCount = suggestion.attendeeAvailability.length;
+//         availabilityInfo = ` (${availableCount}/${totalCount} free)`;
+//       }
+      
+//       html += `
+//         <div style="padding: 8px; border-bottom: 1px solid #e5e7eb; ${validSuggestions === topSuggestions.length - 1 ? 'border-bottom: none;' : ''}">
+//           <div style="font-weight: bold; color: #1f2937;">${validSuggestions + 1}. ${dayName} ${dateStr}</div>
+//           <div style="color: #6b7280; font-size: 14px;">⏰ ${timeStr} - ${suggestion.confidence || 'High'}${availabilityInfo}</div>
+//           <div style="color: #059669; font-size: 12px;">📊 ${suggestion.recommendationReason || 'Available slot'}</div>
+//         </div>`;
+      
+//       validSuggestions++;
+//     } catch (dateError) {
+//       console.error("❌ Error processing suggestion for HTML:", suggestion, dateError);
+//     }
+//   });
   
-  return html;
-}
+//   if (validSuggestions === 0) {
+//     html += `<div style="text-align: center; color: #ef4444; padding: 16px;">❌ No valid time suggestions could be displayed</div>`;
+//   }
+  
+//   html += `
+//       </div>
+      
+//       <div style="margin-top: 12px; text-align: center;">
+//         <button onclick="scheduleFirstValidSuggestion()" style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; margin: 4px; font-size: 12px;">
+//           📅 Schedule First Option
+//         </button>
+//         <button onclick="showAllValidSuggestions()" style="background: #6b7280; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; margin: 4px; font-size: 12px;">
+//           📋 Show All ${validSuggestions} Valid Options
+//         </button>
+//       </div>
+//     </div>`;
+  
+//   return html;
+// }
 
-// 7. HELPER FUNCTIONS - Add these if you haven't already
+// // Helper functions for the buttons
+// function scheduleFirstValidSuggestion() {
+//   const message = "Schedule meeting for the first suggested time slot";
+//   handleUserMessage(message);
+// }
 
-function scheduleFirstSuggestion() {
-  const message = "Schedule meeting for the first suggested time slot";
-  handleUserMessage(message);
-}
-
-function showAllSuggestions() {
-  const message = "Show me all the suggested meeting times with details";
-  handleUserMessage(message);
-}
+// function showAllValidSuggestions() {
+//   const message = "Show me all the suggested meeting times with details";
+//   handleUserMessage(message);
+// }
 
 
 

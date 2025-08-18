@@ -1026,35 +1026,78 @@ router.post("/suggest-times", requireRealTeams, async (req, res) => {
     const {
       attendees = [],
       duration = 30,
+      searchDays = 7,
+      timePreferences = {}
     } = req.body;
-
-    logger.info("🤖 Finding optimal meeting times from REAL Teams calendars", {
-      attendeesCount: attendees.length,
-      duration,
-    });
 
     if (attendees.length === 0) {
       return res.status(400).json({
-        error: "At least one attendee email is required to check real calendar availability"
+        error: "At least one attendee (name or email) is required for time suggestions"
       });
     }
 
-    // Get REAL meeting suggestions from Teams calendars
-    const suggestions = await teamsService.findMeetingTimes(attendees, duration);
+    logger.info("🔍 Finding optimal meeting times with smart name resolution", {
+      originalInput: attendees,
+      duration,
+      searchDays,
+      timePreferences
+    });
 
+    // The TeamsService will now handle name-to-email resolution automatically
+    const suggestions = await teamsService.findMeetingTimes(
+      attendees,
+      duration,
+      searchDays,
+      timePreferences
+    );
+
+    // Return enhanced suggestions
     res.json({
       success: true,
-      suggestions: suggestions,
-      realTeamsCalendarData: true,
-      message: "🤖 Optimal times found using REAL Teams calendar data!",
-      attendeesChecked: attendees.length,
-      duration: duration
+      ...suggestions,
+      realTeamsIntegration: true,
+      message: suggestions.suggestions.length > 0 
+        ? `🎯 Found ${suggestions.suggestions.length} optimal meeting times using real Teams calendar data!`
+        : "No available time slots found for all attendees",
+      helpfulTips: [
+        "You can use either names (like 'John Smith') or emails (like 'john@company.com')",
+        "Names will be automatically resolved to email addresses using your Teams directory",
+        "Make sure all attendees are part of your Teams organization"
+      ]
     });
+
   } catch (error) {
-    logger.error("❌ Suggest times from REAL Teams calendars error:", error);
-    res.status(500).json({ 
-      error: "Failed to get real meeting time suggestions",
-      details: error.message 
+    logger.error("❌ Suggest meeting times error:", error);
+    
+    // Provide helpful error messages
+    if (error.message.includes('Cannot find Teams user')) {
+      return res.status(400).json({
+        error: "User not found in Teams directory",
+        details: error.message,
+        suggestions: [
+          "Try using the exact display name as it appears in Teams",
+          "Use the person's email address instead (e.g., rohit@company.com)",
+          "Check if the person is part of your Teams organization",
+          "Use 'Find People' feature to see available users"
+        ]
+      });
+    }
+    
+    if (error.message.includes('Cannot resolve')) {
+      return res.status(400).json({
+        error: "Name resolution failed",
+        details: error.message,
+        suggestions: [
+          "Use email addresses directly (e.g., rohit@company.com)",
+          "Check the spelling of the person's name",
+          "Try searching for the person in Teams first to get their exact name"
+        ]
+      });
+    }
+
+    res.status(500).json({
+      error: "Failed to suggest optimal meeting times",
+      details: error.message
     });
   }
 });

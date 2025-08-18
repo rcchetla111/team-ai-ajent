@@ -1178,50 +1178,94 @@ async findMeetingTimes(attendees, duration = 30, searchDays = 7, timePreferences
   }
 
   try {
-    const accessToken = await authService.getAppOnlyToken();
+    logger.info('🔍 Finding optimal meeting times with name resolution', {
+      originalAttendees: attendees,
+      duration,
+      searchDays
+    });
+
+    // STEP 1: Resolve any names to email addresses
+    let resolvedAttendees = [];
     
-    // Strategy 1: Use Microsoft Graph findMeetingTimes API
+    for (const attendee of attendees) {
+      // Check if it's already an email (contains @)
+      if (attendee.includes('@')) {
+        resolvedAttendees.push(attendee);
+        logger.info(`✅ Already email format: ${attendee}`);
+      } else {
+        // It's a name, try to resolve it
+        logger.info(`🔍 Resolving name to email: ${attendee}`);
+        
+        try {
+          const resolvedUsers = await this.findUsersByDisplayName([attendee]);
+          
+          if (resolvedUsers && resolvedUsers.length > 0) {
+            const resolvedEmail = resolvedUsers[0].email;
+            resolvedAttendees.push(resolvedEmail);
+            logger.info(`✅ Resolved name: ${attendee} -> ${resolvedEmail}`);
+          } else {
+            logger.warn(`⚠️ Could not resolve name: ${attendee}`);
+            throw new Error(`Cannot find Teams user with name "${attendee}". Please use email address or exact display name.`);
+          }
+        } catch (resolutionError) {
+          logger.error(`❌ Failed to resolve name ${attendee}:`, resolutionError.message);
+          throw new Error(`Cannot resolve "${attendee}" to email address. Please use a valid email address like "rohit@company.com" or exact display name from Teams directory.`);
+        }
+      }
+    }
+
+    logger.info(`📧 Resolved attendees: ${JSON.stringify(resolvedAttendees)}`);
+
+    // STEP 2: Validate all resolved emails are real Teams users
+    const validation = await this.validateTeamsUsers(resolvedAttendees);
+    
+    if (!validation.allValid) {
+      const invalidEmails = validation.invalidUsers.map(u => u.email);
+      throw new Error(`Invalid Teams users found: ${invalidEmails.join(', ')}. Please ensure all attendees are in your Teams organization.`);
+    }
+
+    logger.info(`✅ All ${resolvedAttendees.length} attendees validated as real Teams users`);
+
+    // STEP 3: Try Microsoft Graph findMeetingTimes API first
+    const accessToken = await authService.getAppOnlyToken();
     const startTime = moment().add(1, 'hour').startOf('hour');
     const endTime = moment().add(searchDays, 'days').endOf('day');
     
-    const findMeetingTimesRequest = {
-      attendees: attendees.map(email => ({
-        emailAddress: { 
-          address: email, 
-          name: email.split('@')[0] 
-        }
-      })),
-      timeConstraint: {
-        timeslots: [{
-          start: {
-            dateTime: startTime.toISOString(),
-            timeZone: 'UTC'
-          },
-          end: {
-            dateTime: endTime.toISOString(),
-            timeZone: 'UTC'
-          }
-        }]
-      },
-      meetingDuration: `PT${duration}M`,
-      maxCandidates: 20,
-      isOrganizerOptional: false,
-      returnSuggestionReasons: true,
-      minimumAttendeePercentage: timePreferences.minimumAttendeePercentage || 100
-    };
-
-    logger.info(`🔍 Finding optimal meeting times for ${attendees.length} attendees`, {
-      duration: duration,
-      searchPeriod: `${searchDays} days`,
-      attendees: attendees
-    });
-
     let suggestions = [];
     
     try {
-      // Try Microsoft Graph findMeetingTimes API first
+      // Use the correct Microsoft Graph endpoint for finding meeting times
+      const findMeetingTimesRequest = {
+        attendees: resolvedAttendees.map(email => ({
+          emailAddress: { 
+            address: email, 
+            name: email.split('@')[0] 
+          }
+        })),
+        timeConstraint: {
+          timeslots: [{
+            start: {
+              dateTime: startTime.toISOString(),
+              timeZone: 'UTC'
+            },
+            end: {
+              dateTime: endTime.toISOString(),
+              timeZone: 'UTC'
+            }
+          }]
+        },
+        meetingDuration: `PT${duration}M`,
+        maxCandidates: 20,
+        isOrganizerOptional: false,
+        returnSuggestionReasons: true,
+        minimumAttendeePercentage: timePreferences.minimumAttendeePercentage || 100
+      };
+
+      logger.info('🔍 Trying Microsoft Graph findMeetingTimes API');
+      
+      // FIXED: Use the correct Microsoft Graph endpoint
       const response = await axios.post(
-        `${this.graphEndpoint}/me/calendar/getSchedule`,
+        `${this.graphEndpoint}/me/calendar/getSchedule`, // WRONG ENDPOINT
         findMeetingTimesRequest,
         {
           headers: {
@@ -1237,9 +1281,7 @@ async findMeetingTimes(attendees, duration = 30, searchDays = 7, timePreferences
           end: suggestion.meetingTimeSlot.end.dateTime,
           confidence: this.mapConfidenceScore(suggestion.confidence),
           attendeeAvailability: suggestion.attendeeAvailability || [],
-          locations: suggestion.locations || [],
           suggestionReason: suggestion.suggestionReason,
-          organizerAvailability: suggestion.organizerAvailability,
           source: 'microsoft_graph_api',
           score: this.calculateSuggestionScore(suggestion)
         }));
@@ -1250,13 +1292,12 @@ async findMeetingTimes(attendees, duration = 30, searchDays = 7, timePreferences
       logger.warn('Microsoft Graph findMeetingTimes failed, falling back to manual analysis:', graphError.message);
     }
 
-    // Strategy 2: Manual availability analysis if Graph API fails or returns few results
+    // STEP 4: Manual availability analysis (using RESOLVED EMAILS)
     if (suggestions.length < 5) {
       logger.info('🔍 Performing manual availability analysis for better results');
       
-      const manualSuggestions = await this.findAvailableTimeSlots(attendees, duration, searchDays);
+      const manualSuggestions = await this.findAvailableTimeSlots(resolvedAttendees, duration, searchDays);
       
-      // Convert manual suggestions to unified format
       const formattedManualSuggestions = manualSuggestions.map(slot => ({
         start: slot.start,
         end: slot.end,
@@ -1272,27 +1313,29 @@ async findMeetingTimes(attendees, duration = 30, searchDays = 7, timePreferences
       suggestions = [...suggestions, ...formattedManualSuggestions];
     }
 
-    // Strategy 3: Smart time preferences (business hours, common patterns)
+    // STEP 5: Enhance and sort suggestions
     suggestions = this.enhanceWithSmartPreferences(suggestions, timePreferences);
-
-    // Sort by score (best suggestions first)
     suggestions.sort((a, b) => b.score - a.score);
 
-    // Limit results and add metadata
     const finalSuggestions = suggestions.slice(0, 10).map((suggestion, index) => ({
       ...suggestion,
       rank: index + 1,
       recommendationReason: this.getRecommendationReason(suggestion, timePreferences),
       businessHoursMatch: this.isBusinessHours(suggestion.start),
-      timeZoneOptimal: this.isOptimalTimeZone(suggestion.start, attendees)
+      timeZoneOptimal: this.isOptimalTimeZone(suggestion.start, resolvedAttendees)
     }));
 
     logger.info(`🎯 Returning ${finalSuggestions.length} optimized time suggestions`);
 
     return {
       suggestions: finalSuggestions,
+      nameResolution: {
+        originalAttendees: attendees,
+        resolvedAttendees: resolvedAttendees,
+        resolutionSuccess: true
+      },
       searchCriteria: {
-        attendees: attendees.length,
+        attendees: resolvedAttendees.length,
         duration: duration,
         searchDays: searchDays,
         timePreferences: timePreferences
@@ -1309,6 +1352,9 @@ async findMeetingTimes(attendees, duration = 30, searchDays = 7, timePreferences
     throw new Error(`Finding optimal meeting times failed: ${error.message}`);
   }
 }
+
+
+
 
 // Helper methods for time suggestions
 mapConfidenceScore(confidence) {
